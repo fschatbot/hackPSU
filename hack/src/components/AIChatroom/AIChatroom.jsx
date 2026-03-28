@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
@@ -223,6 +226,7 @@ export function AIChatroom() {
                     </div>
                   )}
                   <div
+                    className="ai-message-content"
                     style={{
                       fontSize: 12.5,
                       lineHeight: 1.65,
@@ -230,10 +234,116 @@ export function AIChatroom() {
                       fontFamily: "'IBM Plex Sans', sans-serif",
                       padding: '4px 0',
                       wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap',
                     }}
                   >
-                    {msg.content}
+                    {msg.role === 'ai' ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          code: ({ node, inline, className, children, ...props }) => (
+                            <code
+                              className={className}
+                              style={{
+                                background: inline ? theme.accentDim : theme.panel,
+                                padding: inline ? '2px 6px' : '8px 12px',
+                                borderRadius: inline ? 4 : 8,
+                                fontSize: inline ? '0.9em' : '0.85em',
+                                fontFamily: "'JetBrains Mono', monospace",
+                                display: inline ? 'inline' : 'block',
+                                overflowX: 'auto',
+                                border: `1px solid ${theme.border}`,
+                                color: theme.text,
+                              }}
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          ),
+                          pre: ({ children }) => (
+                            <pre style={{ margin: '8px 0', overflow: 'auto' }}>
+                              {children}
+                            </pre>
+                          ),
+                          p: ({ children }) => (
+                            <p style={{ margin: '8px 0' }}>{children}</p>
+                          ),
+                          ul: ({ children }) => (
+                            <ul style={{ margin: '8px 0', paddingLeft: 20 }}>{children}</ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol style={{ margin: '8px 0', paddingLeft: 20 }}>{children}</ol>
+                          ),
+                          li: ({ children }) => (
+                            <li style={{ margin: '4px 0' }}>{children}</li>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote
+                              style={{
+                                borderLeft: `3px solid ${theme.accent}`,
+                                paddingLeft: 12,
+                                margin: '8px 0',
+                                fontStyle: 'italic',
+                                color: theme.textDim,
+                              }}
+                            >
+                              {children}
+                            </blockquote>
+                          ),
+                          a: ({ children, href }) => (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                color: theme.accent,
+                                textDecoration: 'underline',
+                              }}
+                            >
+                              {children}
+                            </a>
+                          ),
+                          h1: ({ children }) => (
+                            <h1 style={{ fontSize: '1.4em', margin: '12px 0 8px', fontWeight: 700 }}>
+                              {children}
+                            </h1>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 style={{ fontSize: '1.2em', margin: '10px 0 6px', fontWeight: 600 }}>
+                              {children}
+                            </h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 style={{ fontSize: '1.1em', margin: '8px 0 4px', fontWeight: 600 }}>
+                              {children}
+                            </h3>
+                          ),
+                          strong: ({ children }) => (
+                            <strong style={{ fontWeight: 700, color: theme.textBright }}>
+                              {children}
+                            </strong>
+                          ),
+                          em: ({ children }) => (
+                            <em style={{ fontStyle: 'italic', color: theme.textDim }}>
+                              {children}
+                            </em>
+                          ),
+                          hr: () => (
+                            <hr
+                              style={{
+                                border: 'none',
+                                borderTop: `1px solid ${theme.border}`,
+                                margin: '12px 0',
+                              }}
+                            />
+                          ),
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    ) : (
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                    )}
                     {/* Blinking cursor while streaming */}
                     {msg.streaming && (
                       <span

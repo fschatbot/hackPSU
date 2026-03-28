@@ -2,59 +2,74 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 const AuthContext = createContext();
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check for existing session on mount
+  // Verify token and restore session on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('code_editor_user');
-    const storedToken = localStorage.getItem('code_editor_token');
+    const verifyToken = async () => {
+      const token = localStorage.getItem('code_editor_token');
 
-    if (storedUser && storedToken) {
-      try {
-        const userData = JSON.parse(storedUser);
-        setUser(userData);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Failed to parse stored user:', error);
-        localStorage.removeItem('code_editor_user');
-        localStorage.removeItem('code_editor_token');
+      if (token) {
+        try {
+          const response = await fetch(`${API_URL}/auth/me`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setUser(data.user);
+            setIsAuthenticated(true);
+          } else {
+            // Token is invalid or expired
+            localStorage.removeItem('code_editor_token');
+            localStorage.removeItem('code_editor_user');
+          }
+        } catch (error) {
+          console.error('Failed to verify token:', error);
+          localStorage.removeItem('code_editor_token');
+          localStorage.removeItem('code_editor_user');
+        }
       }
-    }
-    setIsLoading(false);
+
+      setIsLoading(false);
+    };
+
+    verifyToken();
   }, []);
 
   const login = useCallback(async (email, password) => {
     setIsLoading(true);
     try {
-      // TODO: Replace with actual API call
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Mock authentication - replace with real auth
-      if (email && password) {
-        const mockUser = {
-          id: Date.now().toString(),
-          email,
-          name: email.split('@')[0],
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-          createdAt: new Date().toISOString(),
-        };
+      const data = await response.json();
 
-        const mockToken = btoa(`${email}:${Date.now()}`);
-
-        localStorage.setItem('code_editor_user', JSON.stringify(mockUser));
-        localStorage.setItem('code_editor_token', mockToken);
-
-        setUser(mockUser);
-        setIsAuthenticated(true);
-        setIsLoading(false);
-        return { success: true, user: mockUser };
-      } else {
-        throw new Error('Invalid credentials');
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
       }
+
+      // Store JWT token and user data
+      localStorage.setItem('code_editor_token', data.token);
+      localStorage.setItem('code_editor_user', JSON.stringify(data.user));
+
+      setUser(data.user);
+      setIsAuthenticated(true);
+      setIsLoading(false);
+
+      return { success: true, user: data.user };
     } catch (error) {
       setIsLoading(false);
       return { success: false, error: error.message };
@@ -64,27 +79,29 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (email, password, name) => {
     setIsLoading(true);
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, name: name || email.split('@')[0] }),
+      });
 
-      // Mock registration
-      const mockUser = {
-        id: Date.now().toString(),
-        email,
-        name: name || email.split('@')[0],
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-        createdAt: new Date().toISOString(),
-      };
+      const data = await response.json();
 
-      const mockToken = btoa(`${email}:${Date.now()}`);
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
 
-      localStorage.setItem('code_editor_user', JSON.stringify(mockUser));
-      localStorage.setItem('code_editor_token', mockToken);
+      // Store JWT token and user data
+      localStorage.setItem('code_editor_token', data.token);
+      localStorage.setItem('code_editor_user', JSON.stringify(data.user));
 
-      setUser(mockUser);
+      setUser(data.user);
       setIsAuthenticated(true);
       setIsLoading(false);
-      return { success: true, user: mockUser };
+
+      return { success: true, user: data.user };
     } catch (error) {
       setIsLoading(false);
       return { success: false, error: error.message };

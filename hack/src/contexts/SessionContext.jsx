@@ -9,19 +9,70 @@ export function SessionProvider({ children }) {
   const { themeName, fontSize } = useTheme();
 
   const saveSession = useCallback(() => {
-    const session = {
-      lastOpened: new Date().toISOString(),
-      editor: {
-        openTabs,
-        activeTab,
-      },
-      theme: {
-        name: themeName,
-        fontSize,
-      },
-      files,
-    };
-    localStorage.setItem('editor_session', JSON.stringify(session));
+    try {
+      // Strip large binary content from files before saving to localStorage
+      const stripBinaryContent = (fileTree) => {
+        if (!fileTree) return null;
+
+        const stripped = {};
+        for (const [key, node] of Object.entries(fileTree)) {
+          if (node.type === 'file') {
+            // Only save file structure, not large content or binary data
+            const isLargeOrBinary =
+              node.dataUrl ||
+              node.url ||
+              (node.content && node.content.length > 50000); // 50KB limit
+
+            stripped[key] = {
+              type: node.type,
+              lang: node.lang,
+              content: isLargeOrBinary ? '' : node.content, // Exclude large/binary content
+            };
+          } else if (node.type === 'folder') {
+            stripped[key] = {
+              type: node.type,
+              children: stripBinaryContent(node.children),
+            };
+          }
+        }
+        return stripped;
+      };
+
+      const session = {
+        lastOpened: new Date().toISOString(),
+        editor: {
+          openTabs,
+          activeTab,
+        },
+        theme: {
+          name: themeName,
+          fontSize,
+        },
+        files: stripBinaryContent(files),
+      };
+
+      localStorage.setItem('editor_session', JSON.stringify(session));
+    } catch (error) {
+      console.error('Failed to save session:', error);
+      // If still too large, save minimal session
+      try {
+        const minimalSession = {
+          lastOpened: new Date().toISOString(),
+          editor: {
+            openTabs: [],
+            activeTab: null,
+          },
+          theme: {
+            name: themeName,
+            fontSize,
+          },
+          files: null,
+        };
+        localStorage.setItem('editor_session', JSON.stringify(minimalSession));
+      } catch (e) {
+        console.error('Failed to save even minimal session:', e);
+      }
+    }
   }, [openTabs, activeTab, themeName, fontSize, files]);
 
   const loadSession = useCallback(() => {
