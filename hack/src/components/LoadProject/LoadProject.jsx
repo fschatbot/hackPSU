@@ -2,19 +2,21 @@ import React, { useState, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { useGitHub } from '../../contexts/GitHubContext';
-import { processUploadedFiles } from '../../services/fileService';
+import { processUploadedFiles, extractZipFile } from '../../services/fileService';
 import { SAMPLE_FILES } from '../../utils/constants';
 
 export function LoadProject({ onProjectLoaded }) {
   const { theme } = useTheme();
   const { loadFiles } = useEditor();
-  const { isAuthenticated, authenticate, repositories, fetchRepositories, loadRepositoryAsProject } = useGitHub();
+  const { isAuthenticated, authenticate, repositories, fetchRepositories, loadRepositoryAsProject, loadFromUrl } = useGitHub();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [mode, setMode] = useState('sample'); // 'sample', 'upload', 'github'
+  const [mode, setMode] = useState('sample'); // 'sample', 'upload', 'zip', 'github', 'url'
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const [githubUrl, setGithubUrl] = useState('');
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+  const zipInputRef = useRef(null);
 
   const handleLoadSample = () => {
     setLoading(true);
@@ -38,6 +40,47 @@ export function LoadProject({ onProjectLoaded }) {
       onProjectLoaded?.();
     } catch (err) {
       setError('Failed to process uploaded files: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleZipUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const fileTree = await extractZipFile(file);
+      if (!fileTree || Object.keys(fileTree).length === 0) {
+        setError('ZIP appears to be empty or contains only binary files.');
+        return;
+      }
+      loadFiles(fileTree);
+      onProjectLoaded?.();
+    } catch (err) {
+      setError('Failed to extract ZIP: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUrlLoad = async () => {
+    if (!githubUrl.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const fileTree = await loadFromUrl(githubUrl.trim());
+      if (!fileTree || Object.keys(fileTree).length === 0) {
+        setError('No files found. Make sure the repo is public.');
+        return;
+      }
+      loadFiles(fileTree);
+      onProjectLoaded?.();
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -138,7 +181,7 @@ export function LoadProject({ onProjectLoaded }) {
         )}
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          {['sample', 'upload', 'github'].map((m) => (
+          {['sample', 'upload', 'zip', 'url', 'github'].map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
@@ -250,6 +293,90 @@ export function LoadProject({ onProjectLoaded }) {
               onChange={handleFileUpload}
               style={{ display: 'none' }}
             />
+          </div>
+        )}
+
+        {mode === 'zip' && (
+          <div>
+            <p style={{ fontSize: 13, color: theme.textDim, marginBottom: 16 }}>
+              Upload a .zip file of your project (e.g. downloaded from GitHub).
+            </p>
+            <button
+              onClick={() => zipInputRef.current?.click()}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '12px 24px',
+                background: theme.accent,
+                border: 'none',
+                borderRadius: 8,
+                color: theme.bg,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+                transition: 'all 0.2s',
+              }}
+            >
+              {loading ? 'Extracting...' : 'Upload ZIP'}
+            </button>
+            <input
+              ref={zipInputRef}
+              type="file"
+              accept=".zip"
+              onChange={handleZipUpload}
+              style={{ display: 'none' }}
+            />
+          </div>
+        )}
+
+        {mode === 'url' && (
+          <div>
+            <p style={{ fontSize: 13, color: theme.textDim, marginBottom: 16 }}>
+              Load any public GitHub repo by URL.
+            </p>
+            <input
+              type="text"
+              value={githubUrl}
+              onChange={(e) => setGithubUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleUrlLoad()}
+              placeholder="https://github.com/owner/repo"
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                background: theme.bg,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 8,
+                color: theme.text,
+                fontSize: 13,
+                fontFamily: "'IBM Plex Mono', monospace",
+                outline: 'none',
+                marginBottom: 12,
+                boxSizing: 'border-box',
+              }}
+              onFocus={(e) => (e.target.style.borderColor = theme.accent)}
+              onBlur={(e) => (e.target.style.borderColor = theme.border)}
+            />
+            <button
+              onClick={handleUrlLoad}
+              disabled={loading || !githubUrl.trim()}
+              style={{
+                width: '100%',
+                padding: '12px 24px',
+                background: theme.accent,
+                border: 'none',
+                borderRadius: 8,
+                color: theme.bg,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading || !githubUrl.trim() ? 'not-allowed' : 'pointer',
+                opacity: loading || !githubUrl.trim() ? 0.6 : 1,
+                transition: 'all 0.2s',
+              }}
+            >
+              {loading ? 'Loading repo...' : 'Load Repo'}
+            </button>
           </div>
         )}
 

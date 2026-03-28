@@ -6,7 +6,7 @@ const ThemeContext = createContext();
 export function ThemeProvider({ children }) {
   const [themeName, setThemeName] = useState(() => {
     const saved = localStorage.getItem('editor_theme');
-    return saved || DEFAULT_THEME;
+    return (saved && THEMES[saved]) ? saved : DEFAULT_THEME;
   });
 
   const [fontSize, setFontSize] = useState(() => {
