@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { useGitHub } from '../../contexts/GitHubContext';
-import { processUploadedFiles } from '../../services/fileService';
+import { processUploadedFiles, extractZipFile } from '../../services/fileService';
 import { SAMPLE_FILES } from '../../utils/constants';
 
 export function LoadProject({ onProjectLoaded }) {
@@ -11,10 +11,11 @@ export function LoadProject({ onProjectLoaded }) {
   const { isAuthenticated, authenticate, repositories, fetchRepositories, loadRepositoryAsProject } = useGitHub();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [mode, setMode] = useState('sample'); // 'sample', 'upload', 'github'
+  const [mode, setMode] = useState('sample'); // 'sample', 'upload', 'zip', 'github'
   const [selectedRepo, setSelectedRepo] = useState(null);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+  const zipInputRef = useRef(null);
 
   const handleLoadSample = () => {
     setLoading(true);
@@ -38,6 +39,28 @@ export function LoadProject({ onProjectLoaded }) {
       onProjectLoaded?.();
     } catch (err) {
       setError('Failed to process uploaded files: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleZipUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const fileTree = await extractZipFile(file);
+      if (!fileTree || Object.keys(fileTree).length === 0) {
+        setError('ZIP appears to be empty or contains only binary files.');
+        return;
+      }
+      loadFiles(fileTree);
+      onProjectLoaded?.();
+    } catch (err) {
+      setError('Failed to extract ZIP: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -138,7 +161,7 @@ export function LoadProject({ onProjectLoaded }) {
         )}
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          {['sample', 'upload', 'github'].map((m) => (
+          {['sample', 'upload', 'zip', 'github'].map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
@@ -248,6 +271,40 @@ export function LoadProject({ onProjectLoaded }) {
               type="file"
               multiple
               onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+          </div>
+        )}
+
+        {mode === 'zip' && (
+          <div>
+            <p style={{ fontSize: 13, color: theme.textDim, marginBottom: 16 }}>
+              Upload a .zip file of your project (e.g. downloaded from GitHub).
+            </p>
+            <button
+              onClick={() => zipInputRef.current?.click()}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '12px 24px',
+                background: theme.accent,
+                border: 'none',
+                borderRadius: 8,
+                color: theme.bg,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+                transition: 'all 0.2s',
+              }}
+            >
+              {loading ? 'Extracting...' : 'Upload ZIP'}
+            </button>
+            <input
+              ref={zipInputRef}
+              type="file"
+              accept=".zip"
+              onChange={handleZipUpload}
               style={{ display: 'none' }}
             />
           </div>

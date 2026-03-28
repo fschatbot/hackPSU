@@ -106,13 +106,44 @@ export async function processUploadedFiles(fileList) {
   return buildFileTree(files);
 }
 
-// Note: For zip file extraction, you would need to add a library like JSZip
-// This is a placeholder for that functionality
 export async function extractZipFile(zipFile) {
-  // TODO: Implement zip extraction with JSZip
-  // For now, return null
-  console.warn('Zip extraction not yet implemented. Please add JSZip library.');
-  return null;
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(zipFile);
+  const tree = {};
+
+  await Promise.all(
+    Object.entries(zip.files).map(async ([relativePath, zipEntry]) => {
+      if (zipEntry.dir) return;
+
+      // Skip macOS metadata and hidden files
+      if (relativePath.includes('__MACOSX') || relativePath.includes('/.')) return;
+
+      let content = '';
+      try {
+        content = await zipEntry.async('string');
+      } catch {
+        return; // skip binary files
+      }
+
+      const parts = relativePath.split('/').filter(Boolean);
+      // Strip top-level folder if all files share one (common in GitHub ZIPs)
+      const effectiveParts = parts;
+
+      let current = tree;
+      for (let i = 0; i < effectiveParts.length; i++) {
+        const part = effectiveParts[i];
+        const isLast = i === effectiveParts.length - 1;
+        if (isLast) {
+          current[part] = { type: 'file', lang: detectLanguage(part), content };
+        } else {
+          if (!current[part]) current[part] = createFolderNode();
+          current = current[part].children;
+        }
+      }
+    })
+  );
+
+  return tree;
 }
 
 export function flattenFileTree(tree) {
