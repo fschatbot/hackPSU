@@ -30,19 +30,22 @@ export function AIProvider({ children }) {
   const openChatRoom = useCallback((fileName) => {
     setActiveRoom(fileName);
 
-    if (!chatRooms[fileName]) {
-      setChatRooms((prev) => ({
-        ...prev,
-        [fileName]: [
-          {
-            role: 'ai',
-            content: `Ready to help with ${fileName}. Select any code to analyze it, or ask me anything.`,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }));
-    }
-  }, [chatRooms]);
+    setChatRooms((prev) => {
+      if (!prev[fileName]) {
+        return {
+          ...prev,
+          [fileName]: [
+            {
+              role: 'ai',
+              content: `Ready to help with ${fileName}. Select any code to analyze it, or ask me anything.`,
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      return prev;
+    });
+  }, []);
 
   /**
    * Core send function — uses streaming, updates message in-place as chunks arrive.
@@ -52,9 +55,6 @@ export function AIProvider({ children }) {
       if (!activeRoom) return;
 
       setIsLoading(true);
-
-      // Snapshot history before adding new messages
-      const currentHistory = chatRooms[activeRoom] || [];
 
       // Add user message
       const userMsg = {
@@ -74,13 +74,17 @@ export function AIProvider({ children }) {
         mode: activeMode,
       };
 
-      setChatRooms((prev) => ({
-        ...prev,
-        [activeRoom]: [...(prev[activeRoom] || []), userMsg, aiPlaceholder],
-      }));
+      // Capture history from state at time of adding messages
+      let historyForApi = [];
 
-      // History to send to Gemini (excludes the placeholder)
-      const historyForApi = currentHistory.map((m) => ({ role: m.role, content: m.content }));
+      setChatRooms((prev) => {
+        const currentHistory = prev[activeRoom] || [];
+        historyForApi = currentHistory.map((m) => ({ role: m.role, content: m.content }));
+        return {
+          ...prev,
+          [activeRoom]: [...currentHistory, userMsg, aiPlaceholder],
+        };
+      });
 
       let fullResponse = '';
       const roomKey = activeRoom;
@@ -133,7 +137,7 @@ export function AIProvider({ children }) {
         },
       });
     },
-    [activeRoom, chatRooms, activeMode, experienceLevel]
+    [activeRoom, activeMode, experienceLevel]
   );
 
   /**

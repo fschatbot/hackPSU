@@ -24,12 +24,15 @@ export function EditorProvider({ children }) {
   }, []);
 
   const openFile = useCallback((name, file) => {
-    if (!openTabs.includes(name)) {
-      setOpenTabs((prev) => [...prev, name]);
-    }
+    setOpenTabs((prev) => {
+      if (!prev.includes(name)) {
+        return [...prev, name];
+      }
+      return prev;
+    });
     setActiveTab(name);
     setActiveFile(file);
-  }, [openTabs]);
+  }, []);
 
   const closeTab = useCallback((name) => {
     setOpenTabs((prev) => {

@@ -21,7 +21,7 @@ export function StatusBar() {
     >
       <div style={{ display: 'flex', gap: 16 }}>
         <span>
-          {activeFile ? `${activeFile.content.split('\n').length} lines` : '—'}
+          {activeFile?.content ? `${activeFile.content.split('\n').length} lines` : '—'}
         </span>
         <span>UTF-8</span>
       </div>
