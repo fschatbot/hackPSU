@@ -106,6 +106,90 @@ export function GitHubProvider({ children }) {
     return await convertToFileTree(contents);
   }, [fetchRepositoryContents]);
 
+  /**
+   * Load a public GitHub repo from a URL (no auth required).
+   * Uses the git trees API — one request to get all paths, then fetches files in parallel.
+   */
+  const loadFromUrl = useCallback(async (repoUrl) => {
+    // Parse owner/repo from URL like https://github.com/owner/repo or owner/repo
+    const match = repoUrl.trim().match(/(?:github\.com\/)?([^/]+)\/([^/\s?#]+)/);
+    if (!match) throw new Error('Invalid GitHub URL. Use https://github.com/owner/repo');
+
+    const owner = match[1];
+    const repo = match[2].replace(/\.git$/, '');
+
+    const headers = accessToken ? { Authorization: `token ${accessToken}` } : {};
+
+    // Get default branch
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+    if (!repoRes.ok) {
+      if (repoRes.status === 404) throw new Error(`Repo not found: ${owner}/${repo}`);
+      throw new Error(`GitHub API error: ${repoRes.status}`);
+    }
+    const repoData = await repoRes.json();
+    const branch = repoData.default_branch;
+
+    // Get full file tree in one call
+    const treeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+      { headers }
+    );
+    if (!treeRes.ok) throw new Error('Failed to fetch file tree');
+    const treeData = await treeRes.json();
+
+    const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '.next']);
+    const SKIP_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'pdf', 'zip', 'lock']);
+    const MAX_SIZE = 150000; // skip files over 150KB
+
+    const textFiles = treeData.tree.filter(item => {
+      if (item.type !== 'blob') return false;
+      if (item.size > MAX_SIZE) return false;
+      const parts = item.path.split('/');
+      if (parts.some(p => SKIP.has(p))) return false;
+      const ext = item.path.split('.').pop()?.toLowerCase();
+      if (SKIP_EXT.has(ext)) return false;
+      return true;
+    });
+
+    // Fetch file contents in parallel (cap at 40 files to avoid rate limit)
+    const filesToFetch = textFiles.slice(0, 40);
+    const fileContents = await Promise.all(
+      filesToFetch.map(async (item) => {
+        try {
+          const res = await fetch(
+            `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${item.path}`
+          );
+          if (!res.ok) return null;
+          const content = await res.text();
+          return { path: item.path, content };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    // Build file tree
+    const tree = {};
+    for (const file of fileContents) {
+      if (!file) continue;
+      const parts = file.path.split('/');
+      let node = tree;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const isLast = i === parts.length - 1;
+        if (isLast) {
+          const ext = part.split('.').pop()?.toLowerCase() || '';
+          node[part] = { type: 'file', lang: ext, content: file.content };
+        } else {
+          if (!node[part]) node[part] = { type: 'folder', children: {} };
+          node = node[part].children;
+        }
+      }
+    }
+
+    return tree;
+  }, [accessToken]);
+
   const logout = useCallback(() => {
     setAccessToken(null);
     setIsAuthenticated(false);
@@ -122,6 +206,7 @@ export function GitHubProvider({ children }) {
     fetchRepositories,
     fetchRepositoryContents,
     loadRepositoryAsProject,
+    loadFromUrl,
     logout,
   };
 

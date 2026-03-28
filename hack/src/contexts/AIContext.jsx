@@ -93,7 +93,7 @@ export function AIProvider({ children }) {
         userMessage,
         selectedCode: context.selectedText || null,
         fileContext: context.fileContent || null,
-        projectContext: context.openFiles?.join(', ') || null,
+        projectContext: context.projectContext || context.openFiles?.join(', ') || null,
         mode: activeMode,
         experienceLevel,
         chatHistory: historyForApi,

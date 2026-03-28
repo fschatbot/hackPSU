@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
-import { prepareContext } from '../../services/aiService';
+import { buildContext } from '../../lib/contextBuilder';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 const MODE_LABELS = {
   explain: { label: 'Explain', color: null },
@@ -43,13 +44,7 @@ export function AIChatroom() {
   }, [messages]);
 
   const getContext = () => {
-    const flatFiles = files ? flattenFiles(files) : {};
-    return prepareContext(
-      activeTab,
-      activeFile?.content,
-      null,
-      openTabs.map((tab) => ({ name: tab, file: flatFiles[tab] }))
-    );
+    return buildContext(activeTab, activeFile?.content, null, files);
   };
 
   const handleSendMessage = async () => {
@@ -222,18 +217,11 @@ export function AIChatroom() {
                       {modeInfo.label}
                     </div>
                   )}
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      lineHeight: 1.65,
-                      color: theme.text,
-                      fontFamily: "'IBM Plex Sans', sans-serif",
-                      padding: '4px 0',
-                      wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {msg.content}
+                  <div style={{ padding: '4px 0' }}>
+                    {msg.role === 'ai' && !msg.isError
+                      ? <MarkdownRenderer content={msg.content} />
+                      : <div style={{ fontSize: 12.5, lineHeight: 1.65, color: msg.isError ? theme.danger : theme.text, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+                    }
                     {/* Blinking cursor while streaming */}
                     {msg.streaming && (
                       <span
