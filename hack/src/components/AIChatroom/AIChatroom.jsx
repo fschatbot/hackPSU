@@ -4,10 +4,25 @@ import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { prepareContext } from '../../services/aiService';
 
+const MODE_LABELS = {
+  explain: { label: 'Explain', color: null },
+  teaching: { label: 'Teach', color: '#a78bfa' },
+  debug: { label: 'Debug', color: '#f97316' },
+  teachback: { label: 'Quiz', color: '#34d399' },
+};
+
 export function AIChatroom() {
   const { theme } = useTheme();
   const { activeTab, activeFile, openTabs, files, flattenFiles } = useEditor();
-  const { activeRoom, getChatRoom, sendMessage, isLoading, openChatRoom } = useAI();
+  const {
+    activeRoom,
+    getChatRoom,
+    sendMessage,
+    triggerTeachBack,
+    isLoading,
+    openChatRoom,
+    activeMode,
+  } = useAI();
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
 
@@ -18,7 +33,6 @@ export function AIChatroom() {
     }
   }, [activeTab, openChatRoom]);
 
-  // Get messages for current room
   const messages = activeRoom ? getChatRoom(activeRoom) : [];
 
   // Auto-scroll to bottom when messages change
@@ -26,23 +40,26 @@ export function AIChatroom() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || !activeRoom || isLoading) return;
-
-    const userMessage = input.trim();
-    setInput('');
-
-    // Prepare context
+  const getContext = () => {
     const flatFiles = files ? flattenFiles(files) : {};
-    const context = prepareContext(
+    return prepareContext(
       activeTab,
       activeFile?.content,
       null,
       openTabs.map((tab) => ({ name: tab, file: flatFiles[tab] }))
     );
+  };
 
-    // Send message
-    await sendMessage(userMessage, context);
+  const handleSendMessage = async () => {
+    if (!input.trim() || !activeRoom || isLoading) return;
+    const userMessage = input.trim();
+    setInput('');
+    await sendMessage(userMessage, getContext());
+  };
+
+  const handleTeachBack = async () => {
+    if (!activeRoom || isLoading) return;
+    await triggerTeachBack(getContext());
   };
 
   const handleKeyDown = (e) => {
@@ -52,9 +69,15 @@ export function AIChatroom() {
     }
   };
 
+  // Find the last non-streaming AI message (for teach-back button)
+  const lastAiMsg = [...messages].reverse().find(
+    (m) => m.role === 'ai' && !m.streaming && !m.isError && m.content.length > 50
+  );
+  const showTeachBack = lastAiMsg && activeMode !== 'teachback' && !isLoading;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header showing current file */}
+      {/* Header */}
       {activeRoom && (
         <div
           style={{
@@ -70,8 +93,21 @@ export function AIChatroom() {
           }}
         >
           <span style={{ color: theme.accent }}>●</span>
-          <span>Chatting about:</span>
           <span style={{ color: theme.text, fontWeight: 600 }}>{activeRoom}</span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontSize: 10,
+              background: `${theme.accent}20`,
+              color: theme.accent,
+              border: `1px solid ${theme.accent}40`,
+              borderRadius: 4,
+              padding: '1px 6px',
+              fontWeight: 600,
+            }}
+          >
+            {MODE_LABELS[activeMode]?.label || activeMode}
+          </span>
         </div>
       )}
 
@@ -110,127 +146,150 @@ export function AIChatroom() {
               />
             </svg>
             <div style={{ fontSize: 13 }}>
-              <div style={{ marginBottom: 4 }}>Open a file to start chatting</div>
+              <div style={{ marginBottom: 4 }}>Open a file to start</div>
               <div style={{ fontSize: 11, opacity: 0.7 }}>
-                Select code to get automatic AI suggestions
+                Select code or ask anything
               </div>
             </div>
           </div>
         ) : (
-          messages.map((msg, i) => (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                gap: 10,
-                animation: 'fadeUp 0.3s ease',
-                opacity: msg.isError ? 0.7 : 1,
-              }}
-            >
+          messages.map((msg, i) => {
+            const modeInfo = msg.mode ? MODE_LABELS[msg.mode] : null;
+            return (
               <div
+                key={i}
                 style={{
-                  width: 28,
-                  height: 28,
-                  minWidth: 28,
-                  borderRadius: msg.role === 'ai' ? 8 : '50%',
-                  background:
-                    msg.role === 'ai'
-                      ? theme.accentDim
-                      : msg.isError
-                      ? `${theme.danger}20`
-                      : `${theme.info}20`,
-                  border: `1px solid ${
-                    msg.role === 'ai'
-                      ? theme.accent
-                      : msg.isError
-                      ? theme.danger
-                      : theme.info
-                  }40`,
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 12,
-                  color:
-                    msg.role === 'ai'
-                      ? theme.accent
-                      : msg.isError
-                      ? theme.danger
-                      : theme.info,
-                  fontWeight: 700,
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  marginTop: 2,
+                  gap: 10,
+                  animation: 'fadeUp 0.3s ease',
+                  opacity: msg.isError ? 0.7 : 1,
                 }}
               >
-                {msg.role === 'ai' ? 'λ' : 'U'}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 12.5,
-                    lineHeight: 1.6,
-                    color: theme.text,
-                    fontFamily: "'IBM Plex Sans', sans-serif",
-                    padding: '6px 0',
-                    wordBreak: 'break-word',
+                    width: 28,
+                    height: 28,
+                    minWidth: 28,
+                    borderRadius: msg.role === 'ai' ? 8 : '50%',
+                    background:
+                      msg.role === 'ai'
+                        ? theme.accentDim
+                        : msg.isError
+                        ? `${theme.danger}20`
+                        : `${theme.info}20`,
+                    border: `1px solid ${
+                      msg.role === 'ai'
+                        ? theme.accent
+                        : msg.isError
+                        ? theme.danger
+                        : theme.info
+                    }40`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    color:
+                      msg.role === 'ai'
+                        ? theme.accent
+                        : msg.isError
+                        ? theme.danger
+                        : theme.info,
+                    fontWeight: 700,
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    marginTop: 2,
+                    flexShrink: 0,
                   }}
                 >
-                  {msg.content}
+                  {msg.role === 'ai' ? 'λ' : 'U'}
                 </div>
-                {msg.timestamp && (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Mode badge on AI messages */}
+                  {msg.role === 'ai' && modeInfo && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: modeInfo.color || theme.accent,
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        marginBottom: 3,
+                        opacity: 0.8,
+                      }}
+                    >
+                      {modeInfo.label}
+                    </div>
+                  )}
                   <div
                     style={{
-                      fontSize: 9,
-                      color: theme.textDim,
-                      opacity: 0.5,
-                      marginTop: 2,
+                      fontSize: 12.5,
+                      lineHeight: 1.65,
+                      color: theme.text,
+                      fontFamily: "'IBM Plex Sans', sans-serif",
+                      padding: '4px 0',
+                      wordBreak: 'break-word',
+                      whiteSpace: 'pre-wrap',
                     }}
                   >
-                    {new Date(msg.timestamp).toLocaleTimeString()}
+                    {msg.content}
+                    {/* Blinking cursor while streaming */}
+                    {msg.streaming && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          width: 2,
+                          height: '1em',
+                          background: theme.accent,
+                          marginLeft: 2,
+                          verticalAlign: 'text-bottom',
+                          animation: 'pulse 1s infinite',
+                        }}
+                      />
+                    )}
                   </div>
-                )}
+                  {msg.timestamp && !msg.streaming && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: theme.textDim,
+                        opacity: 0.5,
+                        marginTop: 2,
+                      }}
+                    >
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
-        {isLoading && (
-          <div
-            style={{
-              display: 'flex',
-              gap: 10,
-              animation: 'fadeUp 0.3s ease',
-            }}
-          >
-            <div
+
+        {/* Teach-back button after AI explains something */}
+        {showTeachBack && (
+          <div style={{ paddingLeft: 38 }}>
+            <button
+              onClick={handleTeachBack}
               style={{
-                width: 28,
-                height: 28,
-                minWidth: 28,
-                borderRadius: 8,
+                fontSize: 11,
+                fontFamily: "'IBM Plex Mono', monospace",
+                color: theme.accent,
                 background: theme.accentDim,
                 border: `1px solid ${theme.accent}40`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 12,
-                color: theme.accent,
-                fontWeight: 700,
-                fontFamily: "'IBM Plex Mono', monospace",
+                borderRadius: 6,
+                padding: '5px 12px',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                fontWeight: 600,
               }}
+              onMouseEnter={(e) => (e.target.style.borderColor = theme.accent)}
+              onMouseLeave={(e) => (e.target.style.borderColor = `${theme.accent}40`)}
             >
-              λ
-            </div>
-            <div
-              style={{
-                fontSize: 12.5,
-                color: theme.textDim,
-                fontFamily: "'IBM Plex Sans', sans-serif",
-                padding: '6px 0',
-              }}
-            >
-              <span style={{ animation: 'pulse 1.5s infinite' }}>Thinking...</span>
-            </div>
+              ? Test my understanding
+            </button>
           </div>
         )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -277,7 +336,6 @@ export function AIChatroom() {
               overflowY: 'auto',
             }}
             onInput={(e) => {
-              // Auto-resize textarea
               e.target.style.height = 'auto';
               e.target.style.height = e.target.scrollHeight + 'px';
             }}
@@ -297,6 +355,7 @@ export function AIChatroom() {
               justifyContent: 'center',
               transition: 'all 0.2s',
               opacity: input.trim() && !isLoading ? 1 : 0.4,
+              flexShrink: 0,
             }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -319,7 +378,7 @@ export function AIChatroom() {
               fontFamily: "'IBM Plex Mono', monospace",
             }}
           >
-            💡 Tip: Select code to get automatic AI suggestions
+            Select code to analyze · Mode: {MODE_LABELS[activeMode]?.label}
           </div>
         )}
       </div>

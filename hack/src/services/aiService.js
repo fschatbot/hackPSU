@@ -1,201 +1,210 @@
-// AI Service for handling LLM API calls
+// AI Service — Gemini API with streaming + 4 modes
 
-const AI_API_ENDPOINT = process.env.REACT_APP_AI_API_ENDPOINT || 'http://localhost:3001/api/chat';
+const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
 
-/**
- * Send a message to the AI engine
- * @param {Array} messages - Array of message objects with role and content
- * @param {Object} context - Additional context (file content, selection, etc.)
- * @returns {Promise<string>} AI response
- */
-export async function sendToAI(messages, context = {}) {
-  try {
-    const response = await fetch(AI_API_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages,
-        context,
-      }),
-    });
+function getExperienceLabel(level) {
+  if (level < 20) return 'a complete beginner with no programming background — use simple analogies, avoid jargon';
+  if (level < 40) return 'a beginner who knows some basics — explain terms but keep it approachable';
+  if (level < 60) return 'an intermediate developer — you can use standard terminology';
+  if (level < 80) return 'an experienced developer — be concise, assume solid fundamentals';
+  return 'a senior engineer with deep expertise — be direct and technically precise, skip basics entirely';
+}
 
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`);
-    }
+function buildSystemPrompt(mode, experienceLevel, fileContext, projectContext) {
+  const expLabel = getExperienceLabel(experienceLevel);
+  const base = `You are CodeLens, an expert code understanding assistant. The user is ${expLabel}. Adapt your language, depth, and examples to match their level exactly.`;
 
-    const data = await response.json();
-    return data.message || data.response || 'No response from AI';
-  } catch (error) {
-    console.error('AI Service Error:', error);
-    // Fallback to mock response if API is unavailable
-    return getMockResponse(messages, context);
+  const contextBlock = fileContext
+    ? `\n\nFull file context (for reference):\n\`\`\`\n${fileContext.substring(0, 8000)}\n\`\`\``
+    : '';
+
+  const projectBlock = projectContext
+    ? `\n\nOther open files in this project: ${projectContext}`
+    : '';
+
+  switch (mode) {
+    case 'explain':
+      return `${base}
+
+Mode: EXPLAIN
+Explain the selected code in the context of the whole file and project. Cover:
+- What it does (functionally)
+- What it references or depends on
+- What other code depends on it
+- Why it exists here (its role in the bigger picture)
+Be clear and contextual. Don't just describe syntax — explain purpose.${contextBlock}${projectBlock}`;
+
+    case 'teaching':
+      return `${base}
+
+Mode: TEACHING
+Go beyond the code itself. Your job is to teach the underlying ideas:
+- What CS concepts, algorithms, or design patterns is this code using?
+- What are those concepts? Explain them clearly at the user's level.
+- Where do these ideas come from? Reference foundational papers, algorithms, or ideas where relevant (e.g. "this is memoization, formalized by Michie in 1968", "this pattern is from Gang of Four").
+- Why is this approach used here instead of alternatives?
+Teach the "why" and the "what", not just the "how".${contextBlock}${projectBlock}`;
+
+    case 'debug':
+      return `${base}
+
+Mode: DEBUG / CODE REVIEW
+You are a senior developer doing a thorough code review. Analyze the selected code and identify issues. For each finding include:
+- Severity: CRITICAL / WARNING / SUGGESTION
+- What the problem is
+- Why it matters
+- How to fix it
+
+Categories to check: correctness bugs, edge cases, security vulnerabilities, performance problems, error handling gaps, and code quality issues.
+Be specific and actionable. If the code is clean, say so and explain why.${contextBlock}${projectBlock}`;
+
+    case 'teachback':
+      return `${base}
+
+Mode: TEACH-BACK QUIZ
+Generate exactly 2-3 quiz questions to test whether the user understood the code that was just explained. Rules:
+- Questions must test understanding, not just recall
+- Vary question types (e.g. "what would happen if...", "why does this use X instead of Y", "what's wrong with...")
+- Format as a numbered list
+- After each question, on a new line write "Answer:" followed by a concise correct answer
+Keep questions focused on the selected code and directly relevant to understanding it.${contextBlock}${projectBlock}`;
+
+    default:
+      return `${base}${contextBlock}${projectBlock}`;
   }
 }
 
 /**
- * Stream response from AI (for real-time chat)
- * @param {Array} messages - Array of message objects
- * @param {Object} context - Additional context
- * @param {Function} onChunk - Callback for each chunk
- * @returns {Promise<void>}
+ * Stream a response from Gemini API.
+ *
+ * @param {Object} params
+ * @param {string} params.userMessage - The user's current message
+ * @param {string|null} params.selectedCode - Selected code (if any)
+ * @param {string|null} params.fileContext - Full file content for context
+ * @param {string|null} params.projectContext - Other open files (comma-separated names)
+ * @param {string} params.mode - 'explain' | 'teaching' | 'debug' | 'teachback'
+ * @param {number} params.experienceLevel - 0-100
+ * @param {Array} params.chatHistory - Previous messages [{role: 'user'|'ai', content: string}]
+ * @param {Function} params.onChunk - Called with each text chunk as it arrives
+ * @param {Function} params.onDone - Called when stream completes
+ * @param {Function} params.onError - Called with error message on failure
  */
-export async function streamAIResponse(messages, context, onChunk) {
+export async function streamGeminiResponse({
+  userMessage,
+  selectedCode = null,
+  fileContext = null,
+  projectContext = null,
+  mode = 'explain',
+  experienceLevel = 50,
+  chatHistory = [],
+  onChunk,
+  onDone,
+  onError,
+}) {
+  if (!GEMINI_API_KEY) {
+    onError?.('No Gemini API key found. Add REACT_APP_GEMINI_API_KEY to your .env file.');
+    return;
+  }
+
+  const systemPrompt = buildSystemPrompt(mode, experienceLevel, fileContext, projectContext);
+
+  // Embed selected code into the user message if present
+  const currentUserText = selectedCode
+    ? `${userMessage}\n\nSelected code:\n\`\`\`\n${selectedCode}\n\`\`\``
+    : userMessage;
+
+  // Build contents array: history + current user message
+  const contents = [
+    ...chatHistory.map((msg) => ({
+      role: msg.role === 'ai' ? 'model' : 'user',
+      parts: [{ text: msg.content }],
+    })),
+    {
+      role: 'user',
+      parts: [{ text: currentUserText }],
+    },
+  ];
+
   try {
-    const response = await fetch(AI_API_ENDPOINT + '/stream', {
+    const response = await fetch(GEMINI_ENDPOINT, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        messages,
-        context,
+        contents,
+        systemInstruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        generationConfig: {
+          maxOutputTokens: 2048,
+          temperature: 0.7,
+        },
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`);
+      const errText = await response.text();
+      throw new Error(`Gemini API error ${response.status}: ${errText}`);
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value);
-      onChunk(chunk);
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const json = JSON.parse(data);
+            const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) onChunk?.(text);
+          } catch {
+            // skip malformed chunks
+          }
+        }
+      }
     }
-  } catch (error) {
-    console.error('AI Streaming Error:', error);
-    // Fallback to mock response
-    const mockResponse = getMockResponse(messages, context);
-    for (const char of mockResponse) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      onChunk(char);
-    }
+
+    onDone?.();
+  } catch (err) {
+    console.error('Gemini streaming error:', err);
+    onError?.(err.message);
   }
 }
 
 /**
- * Generate automatic prompt based on code selection
- * @param {string} selectedText - The highlighted code
- * @param {string} fileName - Name of the file
- * @param {string} fileContent - Full file content for context
- * @returns {string} Generated prompt
- */
-export function generateSelectionPrompt(selectedText, fileName, fileContent) {
-  // Analyze the selected text to determine intent
-  const isFunction = /function\s+\w+|const\s+\w+\s*=\s*\(.*\)\s*=>/.test(selectedText);
-  const isClass = /class\s+\w+/.test(selectedText);
-  const isImport = /import\s+.*from/.test(selectedText);
-  const isComment = /\/\/|\/\*|\*\//.test(selectedText);
-  const hasError = /error|throw|catch|exception/i.test(selectedText);
-  const isLoop = /for\s*\(|while\s*\(|\.map\(|\.forEach\(/.test(selectedText);
-  const isConditional = /if\s*\(|else|switch|case/.test(selectedText);
-
-  let prompt = '';
-
-  if (isFunction) {
-    prompt = `Explain this function and suggest improvements:\n\n${selectedText}`;
-  } else if (isClass) {
-    prompt = `Analyze this class structure and suggest best practices:\n\n${selectedText}`;
-  } else if (isImport) {
-    prompt = `What does this import do and are there better alternatives?\n\n${selectedText}`;
-  } else if (isComment) {
-    prompt = `Is this comment clear? Suggest improvements:\n\n${selectedText}`;
-  } else if (hasError) {
-    prompt = `Help me debug this error handling code:\n\n${selectedText}`;
-  } else if (isLoop) {
-    prompt = `Review this loop for performance and correctness:\n\n${selectedText}`;
-  } else if (isConditional) {
-    prompt = `Can this conditional logic be simplified?\n\n${selectedText}`;
-  } else {
-    prompt = `Explain what this code does:\n\n${selectedText}`;
-  }
-
-  return prompt;
-}
-
-/**
- * Mock AI responses for development/fallback
- */
-const MOCK_RESPONSES = {
-  function: [
-    "This function looks good! Consider adding JSDoc comments for better documentation. You might also want to add error handling for edge cases.",
-    "The logic here is sound. One suggestion: you could extract the complex condition into a separate helper function to improve readability.",
-    "Great use of async/await! Make sure to handle promise rejections with try-catch blocks to prevent unhandled errors.",
-  ],
-  class: [
-    "Nice class structure! Consider using private fields (#fieldName) for better encapsulation if you're using ES2022+.",
-    "The class looks well-organized. You might want to add getters/setters for controlled access to properties.",
-  ],
-  import: [
-    "This import is fine. If you're concerned about bundle size, consider using named imports instead of default imports when possible.",
-    "That library is good, but you might also consider [alternative] which has better TypeScript support.",
-  ],
-  error: [
-    "For error handling, consider creating custom error classes that extend Error for more specific error types.",
-    "Make sure to log errors appropriately and provide meaningful error messages to users.",
-  ],
-  loop: [
-    "This loop works, but for better performance with large arrays, consider using array methods like .filter() or .reduce().",
-    "The iteration looks correct. Just be careful about modifying the array while iterating over it.",
-  ],
-  conditional: [
-    "You could simplify this with a ternary operator: `condition ? valueA : valueB`",
-    "Consider using early returns to reduce nesting and improve readability.",
-  ],
-  general: [
-    "This code looks clean and follows good practices. Nice work!",
-    "I notice this pattern. Have you considered using [design pattern] here?",
-    "The logic is correct. For better maintainability, consider adding comments explaining the 'why' behind complex decisions.",
-  ],
-};
-
-function getMockResponse(messages, context) {
-  const lastMessage = messages[messages.length - 1]?.content || '';
-
-  // Determine response type based on context
-  let responsePool = MOCK_RESPONSES.general;
-
-  if (context.selectedText) {
-    const text = context.selectedText;
-    if (/function\s+\w+|const\s+\w+\s*=\s*\(.*\)\s*=>/.test(text)) {
-      responsePool = MOCK_RESPONSES.function;
-    } else if (/class\s+\w+/.test(text)) {
-      responsePool = MOCK_RESPONSES.class;
-    } else if (/import\s+.*from/.test(text)) {
-      responsePool = MOCK_RESPONSES.import;
-    } else if (/error|throw|catch|exception/i.test(text)) {
-      responsePool = MOCK_RESPONSES.error;
-    } else if (/for\s*\(|while\s*\(|\.map\(|\.forEach\(/.test(text)) {
-      responsePool = MOCK_RESPONSES.loop;
-    } else if (/if\s*\(|else|switch|case/.test(text)) {
-      responsePool = MOCK_RESPONSES.conditional;
-    }
-  }
-
-  // Return random response from pool
-  return responsePool[Math.floor(Math.random() * responsePool.length)];
-}
-
-/**
- * Prepare context object for AI
- * @param {string} fileName - Current file name
- * @param {string} fileContent - Full file content
- * @param {string} selectedText - Highlighted text (if any)
- * @param {Array} openFiles - List of open files
- * @returns {Object} Context object
+ * Prepare context object for AI calls (used by AIContext and CodeEditor)
  */
 export function prepareContext(fileName, fileContent, selectedText = null, openFiles = []) {
   return {
     fileName,
-    fileContent: fileContent?.substring(0, 10000), // Limit context size
+    fileContent: fileContent?.substring(0, 10000),
     selectedText,
-    openFiles: openFiles.map((f) => f.name),
+    openFiles: openFiles.map((f) => (typeof f === 'string' ? f : f.name)),
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Generate an auto-prompt for code selection based on active mode.
+ * The mode system prompt handles the actual behavior — this just sets the user message.
+ */
+export function generateSelectionPrompt(selectedText, fileName, fileContent, mode = 'explain') {
+  const prompts = {
+    explain: 'Please explain this selected code in context of the project.',
+    teaching: 'Teach me about the concepts and ideas behind this selected code.',
+    debug: 'Review this selected code for bugs, issues, and improvements.',
+    teachback: 'Generate quiz questions about this selected code.',
+  };
+  return prompts[mode] || prompts.explain;
 }

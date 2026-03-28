@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { sendToAI, generateSelectionPrompt, prepareContext } from '../services/aiService';
+import { streamGeminiResponse, generateSelectionPrompt, prepareContext } from '../services/aiService';
 
 const AIContext = createContext();
 
@@ -13,31 +13,30 @@ export function AIProvider({ children }) {
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
 
+  // Active mode: 'explain' | 'teaching' | 'debug' | 'teachback'
+  const [activeMode, setActiveMode] = useState('explain');
+
+  // Experience level: 0-100
+  const [experienceLevel, setExperienceLevel] = useState(50);
+
   // Selection cooldown tracking
   const lastSelectionTime = useRef(0);
-  const SELECTION_COOLDOWN = 2000; // 2 seconds
+  const SELECTION_COOLDOWN = 2000;
 
-  /**
-   * Get chat messages for a specific file
-   */
   const getChatRoom = useCallback((fileName) => {
     return chatRooms[fileName] || [];
   }, [chatRooms]);
 
-  /**
-   * Create or switch to a chat room for a file
-   */
   const openChatRoom = useCallback((fileName) => {
     setActiveRoom(fileName);
 
-    // Initialize chat room if it doesn't exist
     if (!chatRooms[fileName]) {
       setChatRooms((prev) => ({
         ...prev,
         [fileName]: [
           {
             role: 'ai',
-            content: `Hello! I'm here to help you with **${fileName}**. You can ask me questions, or select code to get automatic suggestions.`,
+            content: `Ready to help with ${fileName}. Select any code to analyze it, or ask me anything.`,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -46,25 +45,7 @@ export function AIProvider({ children }) {
   }, [chatRooms]);
 
   /**
-   * Add a message to the current active chat room
-   */
-  const addMessage = useCallback((message) => {
-    if (!activeRoom) return;
-
-    setChatRooms((prev) => ({
-      ...prev,
-      [activeRoom]: [
-        ...(prev[activeRoom] || []),
-        {
-          ...message,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    }));
-  }, [activeRoom]);
-
-  /**
-   * Send a user message and get AI response
+   * Core send function — uses streaming, updates message in-place as chunks arrive.
    */
   const sendMessage = useCallback(
     async (userMessage, context = {}) => {
@@ -72,99 +53,136 @@ export function AIProvider({ children }) {
 
       setIsLoading(true);
 
+      // Snapshot history before adding new messages
+      const currentHistory = chatRooms[activeRoom] || [];
+
       // Add user message
       const userMsg = {
         role: 'user',
         content: userMessage,
         timestamp: new Date().toISOString(),
       };
-      addMessage(userMsg);
 
-      try {
-        // Get conversation history
-        const history = chatRooms[activeRoom] || [];
-        const messages = history.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
-        messages.push({ role: 'user', content: userMessage });
+      // Add streaming placeholder for AI response
+      const aiMsgId = Date.now();
+      const aiPlaceholder = {
+        role: 'ai',
+        content: '',
+        timestamp: new Date().toISOString(),
+        id: aiMsgId,
+        streaming: true,
+        mode: activeMode,
+      };
 
-        // Send to AI
-        const aiResponse = await sendToAI(messages, context);
+      setChatRooms((prev) => ({
+        ...prev,
+        [activeRoom]: [...(prev[activeRoom] || []), userMsg, aiPlaceholder],
+      }));
 
-        // Add AI response
-        const aiMsg = {
-          role: 'ai',
-          content: aiResponse,
-          timestamp: new Date().toISOString(),
-        };
-        addMessage(aiMsg);
-      } catch (error) {
-        console.error('Error sending message to AI:', error);
-        addMessage({
-          role: 'ai',
-          content: 'Sorry, I encountered an error. Please try again.',
-          timestamp: new Date().toISOString(),
-          isError: true,
-        });
-      } finally {
-        setIsLoading(false);
-      }
+      // History to send to Gemini (excludes the placeholder)
+      const historyForApi = currentHistory.map((m) => ({ role: m.role, content: m.content }));
+
+      let fullResponse = '';
+      const roomKey = activeRoom;
+
+      await streamGeminiResponse({
+        userMessage,
+        selectedCode: context.selectedText || null,
+        fileContext: context.fileContent || null,
+        projectContext: context.openFiles?.join(', ') || null,
+        mode: activeMode,
+        experienceLevel,
+        chatHistory: historyForApi,
+        onChunk: (chunk) => {
+          fullResponse += chunk;
+          setChatRooms((prev) => {
+            const room = prev[roomKey] || [];
+            return {
+              ...prev,
+              [roomKey]: room.map((msg) =>
+                msg.id === aiMsgId ? { ...msg, content: fullResponse } : msg
+              ),
+            };
+          });
+        },
+        onDone: () => {
+          setChatRooms((prev) => {
+            const room = prev[roomKey] || [];
+            return {
+              ...prev,
+              [roomKey]: room.map((msg) =>
+                msg.id === aiMsgId ? { ...msg, streaming: false } : msg
+              ),
+            };
+          });
+          setIsLoading(false);
+        },
+        onError: (err) => {
+          setChatRooms((prev) => {
+            const room = prev[roomKey] || [];
+            return {
+              ...prev,
+              [roomKey]: room.map((msg) =>
+                msg.id === aiMsgId
+                  ? { ...msg, content: `Error: ${err}`, streaming: false, isError: true }
+                  : msg
+              ),
+            };
+          });
+          setIsLoading(false);
+        },
+      });
     },
-    [activeRoom, chatRooms, addMessage]
+    [activeRoom, chatRooms, activeMode, experienceLevel]
   );
 
   /**
-   * Handle code selection with cooldown
+   * Handle code selection — auto-triggers in whatever mode is active.
    */
   const handleCodeSelection = useCallback(
     async (selectedText, fileName, fileContent) => {
       const now = Date.now();
-
-      // Check cooldown
-      if (now - lastSelectionTime.current < SELECTION_COOLDOWN) {
-        return;
-      }
-
-      // Update cooldown timer
+      if (now - lastSelectionTime.current < SELECTION_COOLDOWN) return;
       lastSelectionTime.current = now;
 
-      // Don't process empty or very short selections
-      if (!selectedText || selectedText.trim().length < 10) {
-        return;
-      }
+      if (!selectedText || selectedText.trim().length < 10) return;
 
-      // Generate automatic prompt
-      const autoPrompt = generateSelectionPrompt(selectedText, fileName, fileContent);
+      // teachback mode shouldn't auto-trigger on selection
+      if (activeMode === 'teachback') return;
 
-      // Prepare context
+      const autoPrompt = generateSelectionPrompt(selectedText, fileName, fileContent, activeMode);
       const context = prepareContext(fileName, fileContent, selectedText);
-
-      // Send to AI
       await sendMessage(autoPrompt, context);
     },
-    [sendMessage]
+    [sendMessage, activeMode]
   );
 
   /**
-   * Clear chat history for a specific file
+   * Trigger teach-back quiz on the last AI response in the current room.
    */
+  const triggerTeachBack = useCallback(
+    async (context = {}) => {
+      if (!activeRoom) return;
+      const prevMode = activeMode;
+      setActiveMode('teachback');
+
+      const prompt = 'Quiz me on what was just explained.';
+      await sendMessage(prompt, context);
+
+      setActiveMode(prevMode);
+    },
+    [activeRoom, activeMode, sendMessage]
+  );
+
   const clearChatRoom = useCallback((fileName) => {
     setChatRooms((prev) => {
       const updated = { ...prev };
       delete updated[fileName];
       return updated;
     });
-
-    // If this was the active room, clear active state
-    if (activeRoom === fileName) {
-      setActiveRoom(null);
-    }
+    if (activeRoom === fileName) setActiveRoom(null);
   }, [activeRoom]);
 
-  /**
-   * Clear all chat history
-   */
   const clearAllChatRooms = useCallback(() => {
     setChatRooms({});
     setActiveRoom(null);
@@ -174,10 +192,15 @@ export function AIProvider({ children }) {
     chatRooms,
     activeRoom,
     isLoading,
+    activeMode,
+    setActiveMode,
+    experienceLevel,
+    setExperienceLevel,
     getChatRoom,
     openChatRoom,
     sendMessage,
     handleCodeSelection,
+    triggerTeachBack,
     clearChatRoom,
     clearAllChatRooms,
   };
