@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
@@ -33,7 +33,9 @@ export function AIChatroom() {
     }
   }, [activeTab, openChatRoom]);
 
-  const messages = activeRoom ? getChatRoom(activeRoom) : [];
+  const messages = useMemo(() => {
+    return activeRoom ? getChatRoom(activeRoom) : [];
+  }, [activeRoom, getChatRoom]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {

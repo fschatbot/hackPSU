@@ -4,6 +4,7 @@ import { EditorProvider } from './contexts/EditorContext';
 import { SessionProvider, useSession } from './contexts/SessionContext';
 import { GitHubProvider } from './contexts/GitHubContext';
 import { AIProvider } from './contexts/AIContext';
+import { AuthProvider } from './contexts/AuthContext';
 import { ResizableContainer } from './components/Layout/ResizableContainer';
 import { LoadProject } from './components/LoadProject/LoadProject';
 import { useEditor } from './contexts/EditorContext';
@@ -182,15 +183,17 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <EditorProvider>
-        <GitHubProvider>
-          <AIProvider>
-            <SessionProvider>
-              <AppContent />
-            </SessionProvider>
-          </AIProvider>
-        </GitHubProvider>
-      </EditorProvider>
+      <AuthProvider>
+        <EditorProvider>
+          <GitHubProvider>
+            <AIProvider>
+              <SessionProvider>
+                <AppContent />
+              </SessionProvider>
+            </AIProvider>
+          </GitHubProvider>
+        </EditorProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

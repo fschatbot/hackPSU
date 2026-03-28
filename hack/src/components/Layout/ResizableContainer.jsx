@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { ResizeHandle } from './ResizeHandle';
 import { ControlPanel } from '../ControlPanel/ControlPanel';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
-import { CodeEditor } from '../CodeEditor/CodeEditor';
+import { EditableCodeEditor } from '../CodeEditor/EditableCodeEditor';
 import { TabBar } from '../CodeEditor/TabBar';
 import { StatusBar } from '../CodeEditor/StatusBar';
 import { AIChatroom } from '../AIChatroom/AIChatroom';
+import { Login } from '../Auth/Login';
 import { useEditor } from '../../contexts/EditorContext';
 import { DEFAULT_LEFT_PANEL_WIDTH, DEFAULT_RIGHT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_PERCENT } from '../../utils/constants';
 
 export function ResizableContainer() {
   const { theme } = useTheme();
   const { activeFile, activeTab } = useEditor();
+  const { isAuthenticated } = useAuth();
+  const [showLogin, setShowLogin] = useState(!isAuthenticated);
 
   // Panel widths
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
@@ -141,6 +145,11 @@ export function ResizableContainer() {
     </div>
   );
 
+  // Show login if not authenticated (after all hooks)
+  if (!isAuthenticated && showLogin) {
+    return <Login onClose={() => setShowLogin(false)} />;
+  }
+
   return (
     <div
       style={{
@@ -238,7 +247,7 @@ export function ResizableContainer() {
             </span>
           </div>
         )}
-        <CodeEditor file={activeFile} />
+        <EditableCodeEditor file={activeFile} />
         <StatusBar />
       </div>
 

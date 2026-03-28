@@ -60,6 +60,174 @@ export function EditorProvider({ children }) {
     setActiveFile(null);
   }, []);
 
+  // Update file content
+  const updateFileContent = useCallback((fileName, newContent) => {
+    setFiles((prev) => {
+      if (!prev) return prev;
+
+      const updateInTree = (tree) => {
+        const updated = {};
+        for (const [key, node] of Object.entries(tree)) {
+          if (node.type === 'file' && key === fileName) {
+            updated[key] = { ...node, content: newContent };
+          } else if (node.type === 'folder' && node.children) {
+            updated[key] = { ...node, children: updateInTree(node.children) };
+          } else {
+            updated[key] = node;
+          }
+        }
+        return updated;
+      };
+
+      return updateInTree(prev);
+    });
+
+    // Update active file if it's the one being edited
+    if (activeTab === fileName) {
+      setActiveFile((prev) => prev ? { ...prev, content: newContent } : prev);
+    }
+  }, [activeTab]);
+
+  // Create new file
+  const createFile = useCallback((folderPath, fileName, content = '') => {
+    setFiles((prev) => {
+      if (!prev) return prev;
+
+      const navigate = (tree, path) => {
+        if (!path || path === '/') return tree;
+        const parts = path.split('/').filter(Boolean);
+        let current = tree;
+
+        for (const part of parts) {
+          if (current[part] && current[part].type === 'folder') {
+            current = current[part].children;
+          }
+        }
+        return current;
+      };
+
+      const updated = JSON.parse(JSON.stringify(prev));
+      const targetFolder = navigate(updated, folderPath);
+
+      const ext = fileName.split('.').pop().toLowerCase();
+      targetFolder[fileName] = {
+        type: 'file',
+        lang: ext,
+        content,
+      };
+
+      return updated;
+    });
+  }, []);
+
+  // Create new folder
+  const createFolder = useCallback((parentPath, folderName) => {
+    setFiles((prev) => {
+      if (!prev) return prev;
+
+      const navigate = (tree, path) => {
+        if (!path || path === '/') return tree;
+        const parts = path.split('/').filter(Boolean);
+        let current = tree;
+
+        for (const part of parts) {
+          if (current[part] && current[part].type === 'folder') {
+            current = current[part].children;
+          }
+        }
+        return current;
+      };
+
+      const updated = JSON.parse(JSON.stringify(prev));
+      const targetFolder = navigate(updated, parentPath);
+
+      targetFolder[folderName] = {
+        type: 'folder',
+        children: {},
+      };
+
+      return updated;
+    });
+  }, []);
+
+  // Delete file or folder
+  const deleteItem = useCallback((path) => {
+    const parts = path.split('/').filter(Boolean);
+    const itemName = parts.pop();
+
+    setFiles((prev) => {
+      if (!prev) return prev;
+
+      const navigate = (tree, pathParts) => {
+        if (pathParts.length === 0) return tree;
+        let current = tree;
+
+        for (const part of pathParts) {
+          if (current[part] && current[part].type === 'folder') {
+            current = current[part].children;
+          }
+        }
+        return current;
+      };
+
+      const updated = JSON.parse(JSON.stringify(prev));
+      const parentFolder = navigate(updated, parts);
+
+      delete parentFolder[itemName];
+
+      return updated;
+    });
+
+    // Close tab if file was open
+    if (openTabs.includes(itemName)) {
+      closeTab(itemName);
+    }
+  }, [openTabs, closeTab]);
+
+  // Rename file or folder
+  const renameItem = useCallback((path, newName) => {
+    const parts = path.split('/').filter(Boolean);
+    const oldName = parts.pop();
+
+    setFiles((prev) => {
+      if (!prev) return prev;
+
+      const navigate = (tree, pathParts) => {
+        if (pathParts.length === 0) return tree;
+        let current = tree;
+
+        for (const part of pathParts) {
+          if (current[part] && current[part].type === 'folder') {
+            current = current[part].children;
+          }
+        }
+        return current;
+      };
+
+      const updated = JSON.parse(JSON.stringify(prev));
+      const parentFolder = navigate(updated, parts);
+
+      parentFolder[newName] = parentFolder[oldName];
+      delete parentFolder[oldName];
+
+      // Update lang if file extension changed
+      if (parentFolder[newName].type === 'file') {
+        const ext = newName.split('.').pop().toLowerCase();
+        parentFolder[newName].lang = ext;
+      }
+
+      return updated;
+    });
+
+    // Update tab name if file was open
+    if (openTabs.includes(oldName)) {
+      setOpenTabs((prev) => prev.map((t) => (t === oldName ? newName : t)));
+      if (activeTab === oldName) {
+        setActiveTab(newName);
+      }
+    }
+  }, [openTabs, activeTab]);
+
   const value = {
     openTabs,
     activeTab,
@@ -70,6 +238,11 @@ export function EditorProvider({ children }) {
     switchTab,
     loadFiles,
     flattenFiles,
+    updateFileContent,
+    createFile,
+    createFolder,
+    deleteItem,
+    renameItem,
   };
 
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
