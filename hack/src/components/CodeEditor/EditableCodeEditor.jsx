@@ -39,17 +39,22 @@ const LANGUAGE_MAP = {
   html: 'xml',
 };
 
+// Line number column width in px — must match exactly in both layers
+const LINE_NUM_WIDTH = 52;
+// Horizontal padding on both sides (right pad, also used as top/bottom)
+const EDITOR_PADDING = 16;
+
 export function EditableCodeEditor({ file }) {
   const { theme, codeFontSize: fontSize } = useTheme();
   const { handleCodeSelection } = useAI();
   const { activeTab, updateFileContent } = useEditor();
   const textareaRef = useRef(null);
+  const highlightRef = useRef(null);
   const [content, setContent] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [highlightedCode, setHighlightedCode] = useState('');
+  const [highlightedLines, setHighlightedLines] = useState([]);
   const selectionTimeoutRef = useRef(null);
 
-  // Check if file is a text file
   const isTextFile = useCallback(() => {
     if (!file) return false;
     const ext = file.lang?.toLowerCase();
@@ -62,54 +67,44 @@ export function EditableCodeEditor({ file }) {
     return !allMediaTypes.includes(ext);
   }, [file]);
 
-  // Initialize content and highlight
+  const highlight = useCallback((text) => {
+    try {
+      const language = LANGUAGE_MAP[file?.lang] || file?.lang || 'javascript';
+      const result = hljs.highlight(text, { language });
+      setHighlightedLines(result.value.split('\n'));
+    } catch {
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      setHighlightedLines(escaped.split('\n'));
+    }
+  }, [file?.lang]);
+
   useEffect(() => {
     if (file && isTextFile()) {
       const newContent = file.content || '';
       setContent(newContent);
       setHasUnsavedChanges(false);
-
-      // Highlight the code
-      try {
-        const language = LANGUAGE_MAP[file.lang] || file.lang || 'javascript';
-        const result = hljs.highlight(newContent, { language });
-        setHighlightedCode(result.value);
-      } catch (error) {
-        console.error('Syntax highlighting error:', error);
-        // Fallback to plain text with HTML escaping
-        setHighlightedCode(
-          newContent
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-        );
-      }
+      highlight(newContent);
     }
-  }, [file, isTextFile]);
+  }, [file, isTextFile, highlight]);
 
-  // Handle content changes
   const handleChange = (e) => {
     const newContent = e.target.value;
     setContent(newContent);
     setHasUnsavedChanges(true);
+    highlight(newContent);
+  };
 
-    // Re-highlight the code on change
-    try {
-      const language = LANGUAGE_MAP[file?.lang] || file?.lang || 'javascript';
-      const result = hljs.highlight(newContent, { language });
-      setHighlightedCode(result.value);
-    } catch (error) {
-      console.error('Syntax highlighting error:', error);
-      setHighlightedCode(
-        newContent
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-      );
+  // Sync highlight layer scroll position with textarea
+  const handleScroll = () => {
+    if (highlightRef.current && textareaRef.current) {
+      highlightRef.current.scrollTop = textareaRef.current.scrollTop;
+      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
     }
   };
 
-  // Save file
   const handleSave = useCallback(() => {
     if (hasUnsavedChanges && activeTab) {
       updateFileContent(activeTab, content);
@@ -117,35 +112,25 @@ export function EditableCodeEditor({ file }) {
     }
   }, [hasUnsavedChanges, activeTab, content, updateFileContent]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+S / Cmd+S to save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         handleSave();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
 
-  // Handle text selection for AI
   const handleSelection = () => {
-    if (selectionTimeoutRef.current) {
-      clearTimeout(selectionTimeoutRef.current);
-    }
-
+    if (selectionTimeoutRef.current) clearTimeout(selectionTimeoutRef.current);
     selectionTimeoutRef.current = setTimeout(() => {
       const textarea = textareaRef.current;
       if (!textarea) return;
-
-      const selectedText = textarea.value.substring(
-        textarea.selectionStart,
-        textarea.selectionEnd
-      ).trim();
-
+      const selectedText = textarea.value
+        .substring(textarea.selectionStart, textarea.selectionEnd)
+        .trim();
       if (selectedText && selectedText.length > 10 && file && activeTab) {
         handleCodeSelection(selectedText, activeTab, content);
       }
@@ -154,13 +139,10 @@ export function EditableCodeEditor({ file }) {
 
   useEffect(() => {
     return () => {
-      if (selectionTimeoutRef.current) {
-        clearTimeout(selectionTimeoutRef.current);
-      }
+      if (selectionTimeoutRef.current) clearTimeout(selectionTimeoutRef.current);
     };
   }, []);
 
-  // Handle no file selected
   if (!file) {
     return (
       <div
@@ -185,7 +167,6 @@ export function EditableCodeEditor({ file }) {
     );
   }
 
-  // Render media files
   if (!isTextFile()) {
     const ext = file?.lang?.toLowerCase();
 
@@ -198,9 +179,7 @@ export function EditableCodeEditor({ file }) {
               alt={activeTab}
               style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
             />
-            <div style={{ marginTop: 16, color: theme.textDim, fontSize: 13 }}>
-              {activeTab}
-            </div>
+            <div style={{ marginTop: 16, color: theme.textDim, fontSize: 13 }}>{activeTab}</div>
           </div>
         </div>
       );
@@ -240,7 +219,6 @@ export function EditableCodeEditor({ file }) {
       );
     }
 
-    // Binary file fallback
     return (
       <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
@@ -256,8 +234,15 @@ export function EditableCodeEditor({ file }) {
     );
   }
 
-  // Text editor with syntax highlighting
-  const lines = highlightedCode ? highlightedCode.split('\n') : [];
+  // Shared style values — both layers must use identical values to stay aligned
+  const sharedFont = {
+    fontFamily: "'Geist Mono', monospace",
+    fontSize: fontSize,
+    lineHeight: 1.7,
+    tabSize: 2,
+  };
+
+  const lineHeight = fontSize * 1.7;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -295,60 +280,72 @@ export function EditableCodeEditor({ file }) {
         </div>
       )}
 
-      {/* Hybrid editor: highlighted code display + transparent textarea overlay */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'auto' }}>
-        {/* Highlighted code display (background) */}
+      {/* Editor: position:relative container, overflow:hidden — textarea drives scrolling */}
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+
+        {/* ── Highlighted code layer (background, non-interactive) ── */}
+        {/* overflow:hidden — scrolled programmatically to match textarea */}
         <div
+          ref={highlightRef}
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            fontFamily: "'Geist Mono', monospace",
-            fontSize: fontSize,
-            lineHeight: 1.7,
-            padding: '16px 0',
+            overflow: 'hidden',
             pointerEvents: 'none',
-            counterReset: 'line',
+            paddingTop: EDITOR_PADDING,
+            paddingBottom: EDITOR_PADDING,
+            ...sharedFont,
           }}
         >
-          {lines.map((line, i) => (
+          {highlightedLines.map((line, i) => (
             <div
               key={i}
               style={{
                 display: 'flex',
-                minHeight: fontSize * 1.7,
+                height: lineHeight,
               }}
             >
+              {/* Line number — exactly LINE_NUM_WIDTH px wide */}
               <span
                 style={{
                   display: 'inline-block',
-                  width: 52,
-                  minWidth: 52,
+                  width: LINE_NUM_WIDTH,
+                  minWidth: LINE_NUM_WIDTH,
                   textAlign: 'right',
-                  paddingRight: 16,
+                  paddingRight: EDITOR_PADDING,
                   color: theme.textDim,
                   fontSize: fontSize - 1,
                   opacity: 0.6,
+                  userSelect: 'none',
+                  lineHeight: `${lineHeight}px`,
                 }}
               >
                 {i + 1}
               </span>
+              {/* Code content — starts at LINE_NUM_WIDTH, same x as textarea text */}
               <span
                 className="hljs"
-                style={{ flex: 1, paddingRight: 16, whiteSpace: 'pre' }}
-                dangerouslySetInnerHTML={{ __html: line || ' ' }}
+                style={{
+                  flex: 1,
+                  paddingRight: EDITOR_PADDING,
+                  whiteSpace: 'pre',
+                  lineHeight: `${lineHeight}px`,
+                }}
+                dangerouslySetInnerHTML={{ __html: line || '\u200B' }}
               />
             </div>
           ))}
         </div>
 
-        {/* Transparent textarea overlay (foreground) */}
+        {/* ── Textarea layer (foreground, handles all input & scrolling) ── */}
         <textarea
           ref={textareaRef}
           value={content}
           onChange={handleChange}
+          onScroll={handleScroll}
           onMouseUp={handleSelection}
           onKeyUp={handleSelection}
           spellCheck={false}
@@ -356,23 +353,30 @@ export function EditableCodeEditor({ file }) {
             position: 'absolute',
             top: 0,
             left: 0,
-            right: 0,
-            bottom: 0,
             width: '100%',
             height: '100%',
-            padding: '16px',
-            paddingLeft: '52px',
-            fontFamily: "'Geist Mono', monospace",
-            fontSize: fontSize,
-            lineHeight: 1.7,
+            // Padding must produce identical text origin as the highlighted layer:
+            //   top/bottom: EDITOR_PADDING
+            //   left: LINE_NUM_WIDTH (skip over the line-number column)
+            //   right: EDITOR_PADDING
+            paddingTop: EDITOR_PADDING,
+            paddingBottom: EDITOR_PADDING,
+            paddingLeft: LINE_NUM_WIDTH,
+            paddingRight: EDITOR_PADDING,
+            ...sharedFont,
+            // Text is invisible — only the caret is visible; highlight layer shows content
             color: 'transparent',
             background: 'transparent',
+            caretColor: theme.text,
+            WebkitTextFillColor: 'transparent',
             border: 'none',
             outline: 'none',
             resize: 'none',
-            tabSize: 2,
-            caretColor: theme.text,
-            WebkitTextFillColor: 'transparent',
+            // Must match highlight layer: no wrapping, so lines stay on the same row
+            whiteSpace: 'pre',
+            overflowWrap: 'normal',
+            overflow: 'auto',
+            boxSizing: 'border-box',
           }}
         />
       </div>
