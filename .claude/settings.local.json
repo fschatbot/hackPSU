@@ -3,7 +3,9 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(cd /Volumes/Crucial X6 /hackPSU/hack)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(python3 -c \"from PIL import Image; print\\(''pillow ok''\\)\")",
+      "Bash(python3 -c \"import cairosvg; print\\(''cairosvg ok''\\)\")"
     ],
     "deny": [],
     "ask": []
