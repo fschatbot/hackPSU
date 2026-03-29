@@ -36,6 +36,9 @@ export function AIProvider({ children }) {
   const lastSelectionTime = useRef(0);
   const SELECTION_COOLDOWN = 2000;
 
+  // Track the last selection so mode switches can re-trigger analysis
+  const lastSelection = useRef(null);
+
   // Derived room key — every file+mode pair gets its own history
   const activeRoom = useMemo(
     () => (activeFile && activeMode ? `${activeFile}::${activeMode}` : null),
@@ -48,7 +51,7 @@ export function AIProvider({ children }) {
 
   const openChatRoom = useCallback((fileName) => {
     setActiveFile(fileName);
-    // Rooms are initialized lazily on first message — no greeting needed
+    lastSelection.current = null; // Clear stale selection from previous file
   }, []);
 
   /**
@@ -161,6 +164,9 @@ export function AIProvider({ children }) {
       if (now - lastSelectionTime.current < SELECTION_COOLDOWN) return;
       lastSelectionTime.current = now;
 
+      // Save the selection so mode switches can re-trigger
+      lastSelection.current = { text: selectedText, fileName, fileContent };
+
       if (activeMode === 'teachback') return;
 
       const autoPrompt = generateSelectionPrompt(selectedText, fileName, fileContent, activeMode);
@@ -184,6 +190,27 @@ export function AIProvider({ children }) {
     },
     [activeFile, sendMessage]
   );
+
+  // Re-trigger analysis when the mode changes (if there's a selection and we're in auto mode)
+  const prevModeRef = useRef(activeMode);
+  useEffect(() => {
+    if (prevModeRef.current === activeMode) return;
+    prevModeRef.current = activeMode;
+
+    if (analysisMode !== 'auto') return;
+    if (activeMode === 'teachback') return;
+    if (!lastSelection.current) return;
+    if (isLoading) return;
+
+    const { text, fileName, fileContent } = lastSelection.current;
+    const roomKey = `${fileName}::${activeMode}`;
+    // Don't re-analyze if this room already has messages
+    if (chatRooms[roomKey] && chatRooms[roomKey].length > 0) return;
+
+    const autoPrompt = generateSelectionPrompt(text, fileName, fileContent, activeMode);
+    const context = prepareContext(fileName, fileContent, text);
+    sendMessage(autoPrompt, context);
+  }, [activeMode, analysisMode, isLoading, chatRooms, sendMessage]);
 
   const clearChatRoom = useCallback((fileName) => {
     setChatRooms((prev) => {
