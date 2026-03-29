@@ -139,9 +139,9 @@ export function MarkdownRenderer({ content }) {
       }
 
       // Bullet list
-      if (line.match(/^[\*\-] /)) {
+      if (line.match(/^[*-] /)) {
         const listItems = [];
-        while (i < lines.length && lines[i].match(/^[\*\-] /)) {
+        while (i < lines.length && lines[i].match(/^[*-] /)) {
           listItems.push(
             <li key={`li-${i}`} style={{ marginBottom: 3, paddingLeft: 4 }}>
               {renderInline(lines[i].slice(2), `li-${i}`)}

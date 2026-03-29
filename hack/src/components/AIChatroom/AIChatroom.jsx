@@ -288,7 +288,7 @@ export function AIChatroom() {
             onClick={handleSend}
             disabled={!input.trim() || !activeRoom || isLoading}
             style={{
-              width: 32, height: 32, flexShrink: 0,
+              width: 32, height: 32,
               background: input.trim() && activeRoom && !isLoading ? theme.accent : theme.border,
               border: 'none', borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',

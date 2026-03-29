@@ -361,7 +361,7 @@ export function EditableCodeEditor({ file }) {
             width: '100%',
             height: '100%',
             padding: '16px',
-            paddingLeft: '60px',
+            paddingLeft: '52px',
             fontFamily: "'Geist Mono', monospace",
             fontSize: fontSize,
             lineHeight: 1.7,
