@@ -3,6 +3,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { useGitHub } from '../../contexts/GitHubContext';
 import { processUploadedFiles, extractZipFile } from '../../services/fileService';
+import { CodeLensLogo } from '../Icons/CodeLensLogo';
 import { SAMPLE_FILES } from '../../utils/constants';
 
 const METHODS = [
@@ -170,12 +171,17 @@ export function LoadProject({ onProjectLoaded }) {
           <>
             <div style={{ textAlign: 'center', marginBottom: 48 }}>
               <div style={{
-                fontFamily: "'Geist Mono', monospace",
-                fontSize: 13, fontWeight: 600,
-                color: theme.accent, letterSpacing: '0.08em',
-                marginBottom: 20,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 10, marginBottom: 20,
               }}>
-                &lt;/&gt; CodeLens
+                <CodeLensLogo size={48} color={theme.accent} />
+                <span style={{
+                  fontSize: 18, fontWeight: 700,
+                  color: theme.textBright,
+                  letterSpacing: '-0.01em',
+                }}>
+                  CodeLens
+                </span>
               </div>
               <h1 style={{
                 fontSize: 36, fontWeight: 800,
