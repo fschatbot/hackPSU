@@ -3,9 +3,14 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(cd /Volumes/Crucial X6 /hackPSU/hack)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(find /d/coding/hackPSU/hack -type d ! -path */node_modules/* ! -path */.git/*)"
     ],
     "deny": [],
     "ask": []
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true
   }
 }
