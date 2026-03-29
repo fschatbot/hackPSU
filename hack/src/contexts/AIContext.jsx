@@ -55,8 +55,10 @@ export function AIProvider({ children }) {
    * Core send function — streams response, updates message in-place.
    */
   const sendMessage = useCallback(
-    async (userMessage, context = {}) => {
-      if (!activeRoom) return;
+    async (userMessage, context = {}, { overrideRoom, overrideMode } = {}) => {
+      const targetRoom = overrideRoom || activeRoom;
+      const targetMode = overrideMode || activeMode;
+      if (!targetRoom) return;
 
       setIsLoading(true);
 
@@ -73,29 +75,29 @@ export function AIProvider({ children }) {
         timestamp: new Date().toISOString(),
         id: aiMsgId,
         streaming: true,
-        mode: activeMode,
+        mode: targetMode,
       };
 
       let historyForApi = [];
 
       setChatRooms((prev) => {
-        const currentHistory = prev[activeRoom] || [];
+        const currentHistory = prev[targetRoom] || [];
         historyForApi = currentHistory.map((m) => ({ role: m.role, content: m.content }));
         return {
           ...prev,
-          [activeRoom]: [...currentHistory, userMsg, aiPlaceholder],
+          [targetRoom]: [...currentHistory, userMsg, aiPlaceholder],
         };
       });
 
       let fullResponse = '';
-      const roomKey = activeRoom;
+      const roomKey = targetRoom;
 
       await streamGeminiResponse({
         userMessage,
         selectedCode: context.selectedText || null,
         fileContext: context.fileContent || null,
         projectContext: context.projectContext || context.openFiles?.join(', ') || null,
-        mode: activeMode,
+        mode: targetMode,
         experienceLevel,
         chatHistory: historyForApi,
         onChunk: (chunk) => {
@@ -169,20 +171,18 @@ export function AIProvider({ children }) {
   );
 
   /**
-   * Trigger teach-back quiz — switches to teachback mode room and back.
+   * Trigger teach-back quiz — switches to quiz mode and kicks off the first question.
    */
   const triggerTeachBack = useCallback(
     async (context = {}) => {
       if (!activeFile) return;
-      const prevMode = activeMode;
+      const quizRoom = `${activeFile}::teachback`;
       setActiveMode('teachback');
 
-      const prompt = 'Quiz me on what was just explained.';
-      await sendMessage(prompt, context);
-
-      setActiveMode(prevMode);
+      const prompt = 'Quiz me on what was just explained. Start with one question.';
+      await sendMessage(prompt, context, { overrideRoom: quizRoom, overrideMode: 'teachback' });
     },
-    [activeFile, activeMode, sendMessage]
+    [activeFile, sendMessage]
   );
 
   const clearChatRoom = useCallback((fileName) => {

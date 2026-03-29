@@ -36,7 +36,7 @@ function AppContent() {
     }
   };
 
-  if (showLoadProject && !files) {
+  if (!files) {
     return <LoadProject onProjectLoaded={handleProjectLoaded} />;
   }
 

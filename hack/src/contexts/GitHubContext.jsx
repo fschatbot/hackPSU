@@ -137,36 +137,44 @@ export function GitHubProvider({ children }) {
     if (!treeRes.ok) throw new Error('Failed to fetch file tree');
     const treeData = await treeRes.json();
 
-    const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '.next']);
-    const SKIP_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'pdf', 'zip', 'lock']);
-    const MAX_SIZE = 150000; // skip files over 150KB
+    const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.venv', 'venv', 'vendor', 'coverage', '.tox']);
+    const SKIP_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'pdf', 'zip', 'lock', 'map', 'min.js', 'min.css', 'pyc', 'class', 'o', 'so', 'dylib', 'exe', 'dll']);
+    const MAX_SIZE = 200000; // skip files over 200KB
 
     const textFiles = treeData.tree.filter(item => {
       if (item.type !== 'blob') return false;
       if (item.size > MAX_SIZE) return false;
       const parts = item.path.split('/');
-      if (parts.some(p => SKIP.has(p))) return false;
+      if (parts.some(p => SKIP_DIRS.has(p) || p.startsWith('.'))) return false;
       const ext = item.path.split('.').pop()?.toLowerCase();
       if (SKIP_EXT.has(ext)) return false;
       return true;
     });
 
-    // Fetch file contents in parallel (cap at 40 files to avoid rate limit)
-    const filesToFetch = textFiles.slice(0, 40);
-    const fileContents = await Promise.all(
-      filesToFetch.map(async (item) => {
-        try {
-          const res = await fetch(
-            `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${item.path}`
-          );
-          if (!res.ok) return null;
-          const content = await res.text();
-          return { path: item.path, content };
-        } catch {
-          return null;
-        }
-      })
-    );
+    // Fetch up to 150 files in batches of 30 to avoid rate limits
+    const MAX_FILES = 150;
+    const BATCH_SIZE = 30;
+    const filesToFetch = textFiles.slice(0, MAX_FILES);
+    const fileContents = [];
+
+    for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
+      const batch = filesToFetch.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(async (item) => {
+          try {
+            const res = await fetch(
+              `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${item.path}`
+            );
+            if (!res.ok) return null;
+            const content = await res.text();
+            return { path: item.path, content };
+          } catch {
+            return null;
+          }
+        })
+      );
+      fileContents.push(...results);
+    }
 
     // Build file tree
     const tree = {};

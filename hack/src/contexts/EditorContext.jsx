@@ -63,6 +63,14 @@ export function EditorProvider({ children }) {
     setActiveFile(null);
   }, []);
 
+  const resetProject = useCallback(() => {
+    setFiles(null);
+    setOpenTabs([]);
+    setActiveTab(null);
+    setActiveFile(null);
+    localStorage.removeItem('editor_session');
+  }, []);
+
   // Update file content
   const updateFileContent = useCallback((fileName, newContent) => {
     setFiles((prev) => {
@@ -240,6 +248,7 @@ export function EditorProvider({ children }) {
     closeTab,
     switchTab,
     loadFiles,
+    resetProject,
     flattenFiles,
     updateFileContent,
     createFile,

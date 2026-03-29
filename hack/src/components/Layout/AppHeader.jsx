@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
+import { useEditor } from '../../contexts/EditorContext';
 import { Settings } from '../Settings/Settings';
 
 const MODES = [
@@ -25,6 +26,7 @@ function getLevelDesc(level) {
 export function AppHeader() {
   const { theme } = useTheme();
   const { activeMode, setActiveMode, experienceLevel, setExperienceLevel } = useAI();
+  const { resetProject } = useEditor();
   const [showSettings, setShowSettings] = useState(false);
 
   return (
@@ -41,8 +43,15 @@ export function AppHeader() {
       zIndex: 10,
     }}>
 
-      {/* Wordmark */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+      {/* Wordmark — click to go home */}
+      <button
+        onClick={resetProject}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+        }}
+        title="Back to home"
+      >
         <span style={{
           fontFamily: "'Geist Mono', monospace",
           fontSize: 13, fontWeight: 600,
@@ -58,7 +67,7 @@ export function AppHeader() {
         }}>
           CodeLens
         </span>
-      </div>
+      </button>
 
       {/* Divider */}
       <div style={{ width: 1, height: 18, background: theme.border, flexShrink: 0 }} />

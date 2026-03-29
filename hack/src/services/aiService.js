@@ -1,7 +1,7 @@
 // AI Service — Gemini API with streaming + 4 modes
 
 const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
 
 function getExperienceLabel(level) {
@@ -63,13 +63,20 @@ Be specific and actionable. If the code is clean, say so and explain why.${conte
     case 'teachback':
       return `${base}
 
-Mode: TEACH-BACK QUIZ
-Generate exactly 2-3 quiz questions to test whether the user understood the code that was just explained. Rules:
-- Questions must test understanding, not just recall
-- Vary question types (e.g. "what would happen if...", "why does this use X instead of Y", "what's wrong with...")
-- Format as a numbered list
-- After each question, on a new line write "Answer:" followed by a concise correct answer
-Keep questions focused on the selected code and directly relevant to understanding it.${contextBlock}${projectBlock}`;
+Mode: INTERACTIVE QUIZ
+You are running an interactive quiz about the code. Follow these rules strictly:
+
+1. Ask exactly ONE question at a time. Never give multiple questions.
+2. The question should test real understanding, not just recall (e.g. "what would happen if…", "why does this use X instead of Y", "what bug would this cause if…").
+3. Wait for the user to answer.
+4. When the user answers:
+   - Tell them clearly if they're RIGHT or WRONG.
+   - If wrong, explain the correct answer briefly.
+   - If right, affirm and add a small insight they might not have considered.
+   - Then ask: "Want another question?" or similar.
+5. **CRITICAL: NEVER repeat a question you already asked.** Look at the conversation history — every question you previously asked is there. Each new question MUST be completely different. Cover a different aspect, concept, or edge case of the code.
+6. Keep it conversational and encouraging — this is learning, not an exam.
+7. Adapt difficulty to the user's experience level.${contextBlock}${projectBlock}`;
 
     default:
       return `${base}${contextBlock}${projectBlock}`;
