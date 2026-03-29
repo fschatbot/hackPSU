@@ -40,7 +40,7 @@ const LANGUAGE_MAP = {
 };
 
 export function EditableCodeEditor({ file }) {
-  const { theme, fontSize } = useTheme();
+  const { theme, codeFontSize: fontSize } = useTheme();
   const { handleCodeSelection } = useAI();
   const { activeTab, updateFileContent } = useEditor();
   const textareaRef = useRef(null);
@@ -171,7 +171,7 @@ export function EditableCodeEditor({ file }) {
           justifyContent: 'center',
           color: theme.textDim,
           fontSize: 14,
-          fontFamily: "'IBM Plex Mono', monospace",
+          fontFamily: "'Geist Mono', monospace",
         }}
       >
         <div style={{ textAlign: 'center' }}>
@@ -273,7 +273,7 @@ export function EditableCodeEditor({ file }) {
             alignItems: 'center',
           }}
         >
-          <span style={{ fontSize: 11, color: theme.warning, fontFamily: "'IBM Plex Mono', monospace" }}>
+          <span style={{ fontSize: 11, color: theme.warning, fontFamily: "'Geist Mono', monospace" }}>
             Unsaved changes
           </span>
           <button
@@ -287,7 +287,7 @@ export function EditableCodeEditor({ file }) {
               fontSize: 11,
               fontWeight: 600,
               cursor: 'pointer',
-              fontFamily: "'IBM Plex Mono', monospace",
+              fontFamily: "'Geist Mono', monospace",
             }}
           >
             Save (Ctrl+S)
@@ -305,7 +305,7 @@ export function EditableCodeEditor({ file }) {
             left: 0,
             right: 0,
             bottom: 0,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            fontFamily: "'Geist Mono', monospace",
             fontSize: fontSize,
             lineHeight: 1.7,
             padding: '16px 0',
@@ -362,7 +362,7 @@ export function EditableCodeEditor({ file }) {
             height: '100%',
             padding: '16px',
             paddingLeft: '60px',
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            fontFamily: "'Geist Mono', monospace",
             fontSize: fontSize,
             lineHeight: 1.7,
             color: 'transparent',

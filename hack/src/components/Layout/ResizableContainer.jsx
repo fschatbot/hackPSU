@@ -1,22 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { ResizeHandle } from './ResizeHandle';
-import { ControlPanel } from '../ControlPanel/ControlPanel';
 import { FileExplorer } from '../FileExplorer/FileExplorer';
 import { EditableCodeEditor } from '../CodeEditor/EditableCodeEditor';
 import { TabBar } from '../CodeEditor/TabBar';
 import { StatusBar } from '../CodeEditor/StatusBar';
 import { AIChatroom } from '../AIChatroom/AIChatroom';
-import { Login } from '../Auth/Login';
+import { AppHeader } from './AppHeader';
 import { useEditor } from '../../contexts/EditorContext';
 import { DEFAULT_LEFT_PANEL_WIDTH, DEFAULT_RIGHT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_PERCENT } from '../../utils/constants';
 
 export function ResizableContainer() {
   const { theme } = useTheme();
   const { activeFile, activeTab } = useEditor();
-  const { isAuthenticated } = useAuth();
-  const [showLogin, setShowLogin] = useState(!isAuthenticated);
 
   // Panel widths
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
@@ -29,14 +25,8 @@ export function ResizableContainer() {
     return saved ? parseInt(saved, 10) : DEFAULT_RIGHT_PANEL_WIDTH;
   });
 
-  const [explorerHeight, setExplorerHeight] = useState(() => {
-    const saved = localStorage.getItem('explorerHeight');
-    return saved ? parseInt(saved, 10) : 50; // percentage
-  });
-
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingRight, setIsResizingRight] = useState(false);
-  const [isResizingExplorer, setIsResizingExplorer] = useState(false);
 
   // Save to localStorage
   useEffect(() => {
@@ -46,10 +36,6 @@ export function ResizableContainer() {
   useEffect(() => {
     localStorage.setItem('rightPanelWidth', rightPanelWidth.toString());
   }, [rightPanelWidth]);
-
-  useEffect(() => {
-    localStorage.setItem('explorerHeight', explorerHeight.toString());
-  }, [explorerHeight]);
 
   // Handle left panel resize
   const handleLeftResize = useCallback(
@@ -79,40 +65,23 @@ export function ResizableContainer() {
     [isResizingRight]
   );
 
-  // Handle explorer height resize
-  const handleExplorerResize = useCallback(
-    (e) => {
-      if (!isResizingExplorer) return;
-      const containerHeight = e.currentTarget.parentElement?.clientHeight || 600;
-      const deltaY = e.movementY;
-      setExplorerHeight((prev) => {
-        const currentHeight = (prev / 100) * containerHeight;
-        const newHeight = ((currentHeight + deltaY) / containerHeight) * 100;
-        return Math.max(20, Math.min(newHeight, 80));
-      });
-    },
-    [isResizingExplorer]
-  );
-
   // Mouse move handler
   useEffect(() => {
     const handleMouseMove = (e) => {
       handleLeftResize(e);
       handleRightResize(e);
-      handleExplorerResize(e);
     };
 
     const handleMouseUp = () => {
       setIsResizingLeft(false);
       setIsResizingRight(false);
-      setIsResizingExplorer(false);
     };
 
-    if (isResizingLeft || isResizingRight || isResizingExplorer) {
+    if (isResizingLeft || isResizingRight) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       document.body.style.userSelect = 'none';
-      document.body.style.cursor = isResizingExplorer ? 'ns-resize' : 'ew-resize';
+      document.body.style.cursor = 'ew-resize';
     }
 
     return () => {
@@ -121,34 +90,7 @@ export function ResizableContainer() {
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isResizingLeft, isResizingRight, isResizingExplorer, handleLeftResize, handleRightResize, handleExplorerResize]);
-
-  const panelHeader = (title, icon) => (
-    <div
-      style={{
-        padding: '10px 14px',
-        fontSize: 10.5,
-        fontWeight: 700,
-        letterSpacing: '0.1em',
-        textTransform: 'uppercase',
-        color: theme.textDim,
-        fontFamily: "'IBM Plex Mono', monospace",
-        borderBottom: `1px solid ${theme.border}`,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        background: `linear-gradient(180deg, ${theme.accent}04 0%, transparent 100%)`,
-      }}
-    >
-      <span style={{ color: theme.accent, fontSize: 13 }}>{icon}</span>
-      {title}
-    </div>
-  );
-
-  // Show login if not authenticated (after all hooks)
-  if (!isAuthenticated && showLogin) {
-    return <Login onClose={() => setShowLogin(false)} />;
-  }
+  }, [isResizingLeft, isResizingRight, handleLeftResize, handleRightResize]);
 
   return (
     <div
@@ -157,56 +99,27 @@ export function ResizableContainer() {
         height: '100vh',
         background: theme.bg,
         display: 'flex',
-        fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
+        flexDirection: 'column',
+        fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
         color: theme.text,
         overflow: 'hidden',
       }}
     >
-      {/* Left Panel */}
+      <AppHeader />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Left Panel — File Explorer only */}
       <div
         style={{
           width: leftPanelWidth,
           display: 'flex',
           flexDirection: 'column',
           borderRight: `1px solid ${theme.border}`,
+          background: theme.panel,
+          overflow: 'hidden',
         }}
       >
-        {/* Control Panel */}
-        <div
-          style={{
-            height: `${100 - explorerHeight}%`,
-            background: theme.panel,
-            borderBottom: `1px solid ${theme.border}`,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          {panelHeader('Control Room', '◈')}
-          <ControlPanel />
-        </div>
-
-        {/* Resize Handle */}
-        <ResizeHandle
-          onMouseDown={() => setIsResizingExplorer(true)}
-          isVertical={true}
-          isResizing={isResizingExplorer}
-        />
-
-        {/* File Explorer */}
-        <div
-          style={{
-            height: `${explorerHeight}%`,
-            background: theme.panel,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          {panelHeader('Explorer', '⊞')}
-          <div style={{ flex: 1, overflow: 'auto', padding: '4px 6px' }}>
-            <FileExplorer />
-          </div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '4px 6px' }}>
+          <FileExplorer />
         </div>
       </div>
 
@@ -233,7 +146,7 @@ export function ResizableContainer() {
               padding: '6px 16px',
               fontSize: 11,
               color: theme.textDim,
-              fontFamily: "'IBM Plex Mono', monospace",
+              fontFamily: "'Geist Mono', monospace",
               borderBottom: `1px solid ${theme.border}05`,
               display: 'flex',
               gap: 4,
@@ -268,8 +181,8 @@ export function ResizableContainer() {
           overflow: 'hidden',
         }}
       >
-        {panelHeader('AI Assistant', 'λ')}
         <AIChatroom />
+      </div>
       </div>
     </div>
   );

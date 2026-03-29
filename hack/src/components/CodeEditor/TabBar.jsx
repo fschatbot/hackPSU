@@ -5,7 +5,7 @@ import { FileIcon } from '../Icons/FileIcon';
 
 export function TabBar() {
   const { openTabs, activeTab, closeTab, switchTab, flattenFiles, files } = useEditor();
-  const { theme } = useTheme();
+  const { theme, codeFontSize, setCodeFontSize } = useTheme();
 
   const flatFiles = files ? flattenFiles(files) : {};
 
@@ -13,6 +13,34 @@ export function TabBar() {
     e.stopPropagation();
     closeTab(name);
   };
+
+  const sizeBtn = (label, onClick) => (
+    <button
+      onClick={onClick}
+      style={{
+        width: 24, height: 24,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'transparent',
+        border: `1px solid ${theme.border}`,
+        borderRadius: 5,
+        color: theme.textDim,
+        fontSize: 14, lineHeight: 1,
+        cursor: 'pointer',
+        transition: 'all 0.12s',
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = theme.accent;
+        e.currentTarget.style.color = theme.accent;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = theme.border;
+        e.currentTarget.style.color = theme.textDim;
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div
@@ -25,6 +53,7 @@ export function TabBar() {
         overflow: 'auto hidden',
       }}
     >
+      <div style={{ flex: 1, display: 'flex', overflow: 'auto hidden', alignItems: 'center' }}>
       {openTabs.length === 0 ? (
         <span
           style={{
@@ -102,6 +131,26 @@ export function TabBar() {
           );
         })
       )}
+      </div>
+
+      {/* Font size controls — pinned right */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '0 10px',
+        flexShrink: 0,
+        borderLeft: `1px solid ${theme.border}`,
+        height: 38,
+      }}>
+        {sizeBtn('−', () => setCodeFontSize(codeFontSize - 1))}
+        <span style={{
+          fontSize: 10.5, color: theme.textDim,
+          fontFamily: "'Geist Mono', monospace",
+          minWidth: 28, textAlign: 'center',
+        }}>
+          {codeFontSize}
+        </span>
+        {sizeBtn('+', () => setCodeFontSize(codeFontSize + 1))}
+      </div>
     </div>
   );
 }

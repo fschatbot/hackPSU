@@ -13,7 +13,7 @@ export function MarkdownRenderer({ content }) {
     border: `1px solid ${theme.border}`,
     borderRadius: 6,
     padding: '10px 12px',
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'Geist Mono', monospace",
     fontSize: 11.5,
     color: theme.text,
     overflowX: 'auto',
@@ -28,7 +28,7 @@ export function MarkdownRenderer({ content }) {
     border: `1px solid ${theme.border}`,
     borderRadius: 3,
     padding: '1px 5px',
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'Geist Mono', monospace",
     fontSize: '0.88em',
     color: theme.accent,
   };
@@ -109,7 +109,7 @@ export function MarkdownRenderer({ content }) {
       const h1 = line.match(/^# (.+)/);
       if (h1) {
         elements.push(
-          <div key={`h1-${blockIdx}-${i}`} style={{ fontSize: 15, fontWeight: 700, color: theme.accent, margin: '10px 0 4px', fontFamily: "'IBM Plex Mono', monospace" }}>
+          <div key={`h1-${blockIdx}-${i}`} style={{ fontSize: 15, fontWeight: 700, color: theme.accent, margin: '10px 0 4px', fontFamily: "'Inter', system-ui, sans-serif" }}>
             {renderInline(h1[1], `h1-${i}`)}
           </div>
         );
@@ -117,7 +117,7 @@ export function MarkdownRenderer({ content }) {
       }
       if (h2) {
         elements.push(
-          <div key={`h2-${blockIdx}-${i}`} style={{ fontSize: 13.5, fontWeight: 700, color: theme.accent, margin: '8px 0 4px', fontFamily: "'IBM Plex Mono', monospace" }}>
+          <div key={`h2-${blockIdx}-${i}`} style={{ fontSize: 13.5, fontWeight: 700, color: theme.accent, margin: '8px 0 4px', fontFamily: "'Inter', system-ui, sans-serif" }}>
             {renderInline(h2[1], `h2-${i}`)}
           </div>
         );
@@ -191,7 +191,7 @@ export function MarkdownRenderer({ content }) {
   const blocks = parseBlocks(content);
 
   return (
-    <div style={{ fontSize: 12.5, color: theme.text, fontFamily: "'IBM Plex Sans', sans-serif", wordBreak: 'break-word' }}>
+    <div style={{ fontSize: 'inherit', color: theme.text, fontFamily: "'Inter', system-ui, sans-serif", wordBreak: 'break-word' }}>
       {blocks.map((block, idx) => {
         if (block.type === 'code') {
           return <code key={idx} style={codeBlock}>{block.content}</code>;

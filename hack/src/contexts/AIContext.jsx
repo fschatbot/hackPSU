@@ -1,14 +1,14 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 import { streamGeminiResponse, generateSelectionPrompt, prepareContext } from '../services/aiService';
 
 const AIContext = createContext();
 
 export function AIProvider({ children }) {
-  // Per-file chat rooms: { fileName: [messages] }
+  // Chat rooms keyed by "filename::mode" — each file+mode combo has its own history
   const [chatRooms, setChatRooms] = useState({});
 
-  // Currently active chat room (file)
-  const [activeRoom, setActiveRoom] = useState(null);
+  // Active file name (display only)
+  const [activeFile, setActiveFile] = useState(null);
 
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
@@ -19,36 +19,40 @@ export function AIProvider({ children }) {
   // Experience level: 0-100
   const [experienceLevel, setExperienceLevel] = useState(50);
 
+  // Analysis mode: 'auto' = selection triggers AI, 'manual' = user types their own question
+  const [analysisMode, setAnalysisModeRaw] = useState(() => {
+    return localStorage.getItem('analysisMode') || 'auto';
+  });
+
+  const setAnalysisMode = (v) => {
+    setAnalysisModeRaw(v);
+    localStorage.setItem('analysisMode', v);
+  };
+
+  // In manual mode, stores the last selected code snippet so it survives focus changes
+  const [pendingSelection, setPendingSelection] = useState(null);
+
   // Selection cooldown tracking
   const lastSelectionTime = useRef(0);
   const SELECTION_COOLDOWN = 2000;
 
-  const getChatRoom = useCallback((fileName) => {
-    return chatRooms[fileName] || [];
+  // Derived room key — every file+mode pair gets its own history
+  const activeRoom = useMemo(
+    () => (activeFile && activeMode ? `${activeFile}::${activeMode}` : null),
+    [activeFile, activeMode]
+  );
+
+  const getChatRoom = useCallback((roomKey) => {
+    return chatRooms[roomKey] || [];
   }, [chatRooms]);
 
   const openChatRoom = useCallback((fileName) => {
-    setActiveRoom(fileName);
-
-    setChatRooms((prev) => {
-      if (!prev[fileName]) {
-        return {
-          ...prev,
-          [fileName]: [
-            {
-              role: 'ai',
-              content: `Ready to help with ${fileName}. Select any code to analyze it, or ask me anything.`,
-              timestamp: new Date().toISOString(),
-            },
-          ],
-        };
-      }
-      return prev;
-    });
+    setActiveFile(fileName);
+    // Rooms are initialized lazily on first message — no greeting needed
   }, []);
 
   /**
-   * Core send function — uses streaming, updates message in-place as chunks arrive.
+   * Core send function — streams response, updates message in-place.
    */
   const sendMessage = useCallback(
     async (userMessage, context = {}) => {
@@ -56,14 +60,12 @@ export function AIProvider({ children }) {
 
       setIsLoading(true);
 
-      // Add user message
       const userMsg = {
         role: 'user',
         content: userMessage,
         timestamp: new Date().toISOString(),
       };
 
-      // Add streaming placeholder for AI response
       const aiMsgId = Date.now();
       const aiPlaceholder = {
         role: 'ai',
@@ -74,7 +76,6 @@ export function AIProvider({ children }) {
         mode: activeMode,
       };
 
-      // Capture history from state at time of adding messages
       let historyForApi = [];
 
       setChatRooms((prev) => {
@@ -141,32 +142,38 @@ export function AIProvider({ children }) {
   );
 
   /**
-   * Handle code selection — auto-triggers in whatever mode is active.
+   * Handle code selection — only fires in auto mode.
    */
   const handleCodeSelection = useCallback(
     async (selectedText, fileName, fileContent) => {
+      if (!selectedText || selectedText.trim().length < 10) return;
+
+      if (analysisMode === 'manual') {
+        // In manual mode: save selection so it survives focus loss, don't auto-send
+        setPendingSelection({ text: selectedText, fileName, fileContent });
+        return;
+      }
+
+      // Auto mode below
       const now = Date.now();
       if (now - lastSelectionTime.current < SELECTION_COOLDOWN) return;
       lastSelectionTime.current = now;
 
-      if (!selectedText || selectedText.trim().length < 10) return;
-
-      // teachback mode shouldn't auto-trigger on selection
       if (activeMode === 'teachback') return;
 
       const autoPrompt = generateSelectionPrompt(selectedText, fileName, fileContent, activeMode);
       const context = prepareContext(fileName, fileContent, selectedText);
       await sendMessage(autoPrompt, context);
     },
-    [sendMessage, activeMode]
+    [sendMessage, activeMode, analysisMode]
   );
 
   /**
-   * Trigger teach-back quiz on the last AI response in the current room.
+   * Trigger teach-back quiz — switches to teachback mode room and back.
    */
   const triggerTeachBack = useCallback(
     async (context = {}) => {
-      if (!activeRoom) return;
+      if (!activeFile) return;
       const prevMode = activeMode;
       setActiveMode('teachback');
 
@@ -175,31 +182,39 @@ export function AIProvider({ children }) {
 
       setActiveMode(prevMode);
     },
-    [activeRoom, activeMode, sendMessage]
+    [activeFile, activeMode, sendMessage]
   );
 
   const clearChatRoom = useCallback((fileName) => {
     setChatRooms((prev) => {
       const updated = { ...prev };
-      delete updated[fileName];
+      // Clear all mode rooms for this file
+      Object.keys(updated).forEach((key) => {
+        if (key.startsWith(`${fileName}::`)) delete updated[key];
+      });
       return updated;
     });
-    if (activeRoom === fileName) setActiveRoom(null);
-  }, [activeRoom]);
+    if (activeFile === fileName) setActiveFile(null);
+  }, [activeFile]);
 
   const clearAllChatRooms = useCallback(() => {
     setChatRooms({});
-    setActiveRoom(null);
+    setActiveFile(null);
   }, []);
 
   const value = {
     chatRooms,
     activeRoom,
+    activeFile,
     isLoading,
     activeMode,
     setActiveMode,
     experienceLevel,
     setExperienceLevel,
+    analysisMode,
+    setAnalysisMode,
+    pendingSelection,
+    clearPendingSelection: () => setPendingSelection(null),
     getChatRoom,
     openChatRoom,
     sendMessage,

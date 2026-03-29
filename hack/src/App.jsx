@@ -37,7 +37,7 @@ function AppContent() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap');
 
         * {
           margin: 0;
@@ -47,6 +47,13 @@ function AppContent() {
 
         body {
           overflow: hidden;
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          background: ${theme.bg};
+          color: ${theme.text};
+        }
+
+        button, input, select, textarea {
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
 
         ::-webkit-scrollbar {

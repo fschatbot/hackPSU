@@ -1,255 +1,201 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { buildContext } from '../../lib/contextBuilder';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
-const MODE_LABELS = {
-  explain: { label: 'Explain', color: null },
-  teaching: { label: 'Teach', color: '#a78bfa' },
-  debug: { label: 'Debug', color: '#f97316' },
-  teachback: { label: 'Quiz', color: '#34d399' },
+const MODE_INFO = {
+  explain:  { label: 'Explain',  color: null,       desc: 'Understanding the code' },
+  teaching: { label: 'Teach',    color: '#b89af5',  desc: 'Concepts & ideas behind it' },
+  debug:    { label: 'Review',   color: '#fb923c',  desc: 'Bugs & issues' },
+  teachback:{ label: 'Quiz',     color: '#5eead4',  desc: 'Testing your understanding' },
 };
 
 export function AIChatroom() {
-  const { theme } = useTheme();
-  const { activeTab, activeFile, openTabs, files, flattenFiles } = useEditor();
+  const { theme, chatFontSize, setChatFontSize } = useTheme();
+  const { activeTab, activeFile, files } = useEditor();
   const {
-    activeRoom,
-    getChatRoom,
-    sendMessage,
-    triggerTeachBack,
-    isLoading,
-    openChatRoom,
-    activeMode,
+    activeRoom, activeFile: activeChatFile, getChatRoom, sendMessage, triggerTeachBack,
+    isLoading, openChatRoom, activeMode, analysisMode, pendingSelection, clearPendingSelection,
   } = useAI();
+
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  // Open chat room when file changes
   useEffect(() => {
-    if (activeTab) {
-      openChatRoom(activeTab);
-    }
+    if (activeTab) openChatRoom(activeTab);
   }, [activeTab, openChatRoom]);
 
-  const messages = useMemo(() => {
-    return activeRoom ? getChatRoom(activeRoom) : [];
-  }, [activeRoom, getChatRoom]);
+  const messages = useMemo(() => activeRoom ? getChatRoom(activeRoom) : [], [activeRoom, getChatRoom]);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const getContext = () => {
-    return buildContext(activeTab, activeFile?.content, null, files);
+    const base = buildContext(activeTab, activeFile?.content, null, files);
+    // In manual mode, inject the saved selection as selectedText
+    if (analysisMode === 'manual' && pendingSelection) {
+      return { ...base, selectedText: pendingSelection.text };
+    }
+    return base;
   };
 
-  const handleSendMessage = async () => {
+  const handleSend = async () => {
     if (!input.trim() || !activeRoom || isLoading) return;
-    const userMessage = input.trim();
+    const msg = input.trim();
     setInput('');
-    await sendMessage(userMessage, getContext());
-  };
-
-  const handleTeachBack = async () => {
-    if (!activeRoom || isLoading) return;
-    await triggerTeachBack(getContext());
+    if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
+    await sendMessage(msg, getContext());
+    if (analysisMode === 'manual') clearPendingSelection();
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  // Find the last non-streaming AI message (for teach-back button)
   const lastAiMsg = [...messages].reverse().find(
     (m) => m.role === 'ai' && !m.streaming && !m.isError && m.content.length > 50
   );
   const showTeachBack = lastAiMsg && activeMode !== 'teachback' && !isLoading;
 
+  const modeInfo = MODE_INFO[activeMode] || MODE_INFO.explain;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      fontFamily: "'Inter', system-ui, sans-serif",
+      background: theme.panel,
+    }}>
+
       {/* Header */}
-      {activeRoom && (
-        <div
-          style={{
-            padding: '8px 12px',
-            borderBottom: `1px solid ${theme.border}`,
-            fontSize: 11,
-            color: theme.textDim,
-            fontFamily: "'IBM Plex Mono', monospace",
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: theme.accentDim,
-          }}
-        >
-          <span style={{ color: theme.accent }}>●</span>
-          <span style={{ color: theme.text, fontWeight: 600 }}>{activeRoom}</span>
-          <span
-            style={{
-              marginLeft: 'auto',
-              fontSize: 10,
-              background: `${theme.accent}20`,
-              color: theme.accent,
-              border: `1px solid ${theme.accent}40`,
-              borderRadius: 4,
-              padding: '1px 6px',
-              fontWeight: 600,
-            }}
-          >
-            {MODE_LABELS[activeMode]?.label || activeMode}
-          </span>
+      <div style={{
+        padding: '0 14px',
+        borderBottom: `1px solid ${theme.border}`,
+        display: 'flex', alignItems: 'center', gap: 8,
+        flexShrink: 0, height: 38,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {activeChatFile ? (
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: theme.textBright, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeChatFile}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: theme.textMuted }}>No file open</div>
+          )}
         </div>
-      )}
+        <div style={{
+          padding: '3px 9px',
+          borderRadius: 20,
+          background: theme.accentDim,
+          border: `1px solid ${theme.accent}30`,
+          fontSize: 11, fontWeight: 600,
+          color: modeInfo.color || theme.accent,
+          flexShrink: 0,
+        }}>
+          {modeInfo.label}
+        </div>
+        {/* Font size controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, borderLeft: `1px solid ${theme.border}`, paddingLeft: 8 }}>
+          {[['−', -1], ['+', 1]].map(([lbl, delta]) => (
+            <button
+              key={lbl}
+              onClick={() => setChatFontSize(chatFontSize + delta)}
+              style={{
+                width: 22, height: 22,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent',
+                border: `1px solid ${theme.border}`,
+                borderRadius: 5,
+                color: theme.textDim, fontSize: 13, lineHeight: 1,
+                cursor: 'pointer', transition: 'all 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = theme.accent; e.currentTarget.style.color = theme.accent; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.color = theme.textDim; }}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: 12,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-        }}
-      >
-        {messages.length === 0 && !activeRoom ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              flexDirection: 'column',
-              gap: 12,
-              color: theme.textDim,
-              textAlign: 'center',
-              padding: 20,
-            }}
-          >
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="18" stroke={theme.textDim} strokeWidth="1.5" />
-              <path
-                d="M16 22a2 2 0 104 0 2 2 0 00-4 0M28 22a2 2 0 104 0 2 2 0 00-4 0M16 30c2 4 8 4 16 0"
-                stroke={theme.accent}
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-            <div style={{ fontSize: 13 }}>
-              <div style={{ marginBottom: 4 }}>Open a file to start</div>
-              <div style={{ fontSize: 11, opacity: 0.7 }}>
-                Select code or ask anything
-              </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 16, fontSize: chatFontSize }}>
+
+        {messages.length === 0 && !activeChatFile ? (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            height: '100%', gap: 12, textAlign: 'center', padding: 24,
+          }}>
+            <div style={{ fontSize: 32 }}>🔍</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>Open a file to get started</div>
+            <div style={{ fontSize: 12.5, color: theme.textMuted, lineHeight: 1.5 }}>
+              Select any code in the editor and CodeLens will explain it — at your level.
             </div>
           </div>
         ) : (
           messages.map((msg, i) => {
-            const modeInfo = msg.mode ? MODE_LABELS[msg.mode] : null;
+            const isAI = msg.role === 'ai';
+            const msgMode = msg.mode ? MODE_INFO[msg.mode] : null;
+
             return (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  animation: 'fadeUp 0.3s ease',
-                  opacity: msg.isError ? 0.7 : 1,
-                }}
-              >
-                <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    minWidth: 28,
-                    borderRadius: msg.role === 'ai' ? 8 : '50%',
-                    background:
-                      msg.role === 'ai'
-                        ? theme.accentDim
-                        : msg.isError
-                        ? `${theme.danger}20`
-                        : `${theme.info}20`,
-                    border: `1px solid ${
-                      msg.role === 'ai'
-                        ? theme.accent
-                        : msg.isError
-                        ? theme.danger
-                        : theme.info
-                    }40`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 12,
-                    color:
-                      msg.role === 'ai'
-                        ? theme.accent
-                        : msg.isError
-                        ? theme.danger
-                        : theme.info,
-                    fontWeight: 700,
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    marginTop: 2,
-                    flexShrink: 0,
-                  }}
-                >
-                  {msg.role === 'ai' ? 'λ' : 'U'}
+              <div key={i} style={{ display: 'flex', gap: 10, animation: 'fadeUp 0.25s ease' }}>
+
+                {/* Avatar */}
+                <div style={{
+                  width: 28, height: 28, minWidth: 28,
+                  borderRadius: isAI ? 8 : '50%',
+                  background: isAI ? theme.accentDim : `${theme.accent}18`,
+                  border: `1px solid ${isAI ? theme.accent + '50' : theme.accent + '30'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, flexShrink: 0, marginTop: 1,
+                }}>
+                  {isAI ? '✦' : '→'}
                 </div>
+
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Mode badge on AI messages */}
-                  {msg.role === 'ai' && modeInfo && (
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: modeInfo.color || theme.accent,
-                        fontFamily: "'IBM Plex Mono', monospace",
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        marginBottom: 3,
-                        opacity: 0.8,
-                      }}
-                    >
-                      {modeInfo.label}
+                  {isAI && msgMode && (
+                    <div style={{
+                      fontSize: 10, fontWeight: 700,
+                      textTransform: 'uppercase', letterSpacing: '0.08em',
+                      color: msgMode.color || theme.accent,
+                      marginBottom: 4, opacity: 0.8,
+                    }}>
+                      {msgMode.label}
                     </div>
                   )}
-                  <div style={{ padding: '4px 0' }}>
-                    {msg.role === 'ai' && !msg.isError
+
+                  {/* Message content */}
+                  <div style={{ padding: '2px 0' }}>
+                    {isAI && !msg.isError
                       ? <MarkdownRenderer content={msg.content} />
-                      : <div style={{ fontSize: 12.5, lineHeight: 1.65, color: msg.isError ? theme.danger : theme.text, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+                      : (
+                        <div style={{
+                          fontSize: 'inherit', lineHeight: 1.65,
+                          color: msg.isError ? theme.danger : theme.text,
+                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        }}>
+                          {msg.content}
+                        </div>
+                      )
                     }
-                    {/* Blinking cursor while streaming */}
                     {msg.streaming && (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          width: 2,
-                          height: '1em',
-                          background: theme.accent,
-                          marginLeft: 2,
-                          verticalAlign: 'text-bottom',
-                          animation: 'pulse 1s infinite',
-                        }}
-                      />
+                      <span style={{
+                        display: 'inline-block', width: 2, height: '1em',
+                        background: theme.accent, marginLeft: 3,
+                        verticalAlign: 'text-bottom',
+                        animation: 'pulse 1s infinite',
+                      }} />
                     )}
                   </div>
+
+                  {/* Timestamp */}
                   {msg.timestamp && !msg.streaming && (
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: theme.textDim,
-                        opacity: 0.5,
-                        marginTop: 2,
-                      }}
-                    >
-                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    <div style={{ fontSize: 10, color: theme.textMuted, marginTop: 4, opacity: 0.6 }}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   )}
                 </div>
@@ -258,27 +204,23 @@ export function AIChatroom() {
           })
         )}
 
-        {/* Teach-back button after AI explains something */}
+        {/* Teach-back button */}
         {showTeachBack && (
           <div style={{ paddingLeft: 38 }}>
             <button
-              onClick={handleTeachBack}
+              onClick={() => triggerTeachBack(getContext())}
               style={{
-                fontSize: 11,
-                fontFamily: "'IBM Plex Mono', monospace",
-                color: theme.accent,
-                background: theme.accentDim,
-                border: `1px solid ${theme.accent}40`,
-                borderRadius: 6,
-                padding: '5px 12px',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                fontWeight: 600,
+                fontSize: 12, fontWeight: 600,
+                color: theme.success || '#5eead4',
+                background: `${theme.success || '#5eead4'}12`,
+                border: `1px solid ${theme.success || '#5eead4'}30`,
+                borderRadius: 8, padding: '6px 14px',
+                cursor: 'pointer', transition: 'all 0.15s',
               }}
-              onMouseEnter={(e) => (e.target.style.borderColor = theme.accent)}
-              onMouseLeave={(e) => (e.target.style.borderColor = `${theme.accent}40`)}
+              onMouseEnter={(e) => { e.target.style.background = `${theme.success || '#5eead4'}20`; }}
+              onMouseLeave={(e) => { e.target.style.background = `${theme.success || '#5eead4'}12`; }}
             >
-              ? Test my understanding
+              ✏️ Test my understanding
             </button>
           </div>
         )}
@@ -287,46 +229,55 @@ export function AIChatroom() {
       </div>
 
       {/* Input */}
-      <div
-        style={{
-          padding: 10,
-          borderTop: `1px solid ${theme.border}`,
+      <div style={{ padding: '10px 12px', borderTop: `1px solid ${theme.border}`, flexShrink: 0 }}>
+        {/* Pending selection pill */}
+        {analysisMode === 'manual' && pendingSelection && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 10px', marginBottom: 8,
+            background: theme.accentDim,
+            border: `1px solid ${theme.accent}40`,
+            borderRadius: 8,
+          }}>
+            <span style={{ fontSize: 11, color: theme.accent, flexShrink: 0 }}>⌥ code attached</span>
+            <span style={{
+              flex: 1, fontSize: 11, color: theme.textDim,
+              fontFamily: "'Geist Mono', monospace",
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {pendingSelection.text.slice(0, 60)}{pendingSelection.text.length > 60 ? '…' : ''}
+            </span>
+            <button
+              onClick={clearPendingSelection}
+              style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+            >×</button>
+          </div>
+        )}
+
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'flex-end',
+          background: theme.panelAlt,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 12, padding: '6px 6px 6px 12px',
+          transition: 'border-color 0.15s',
         }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            background: theme.bg,
-            borderRadius: 10,
-            border: `1px solid ${theme.border}`,
-            padding: 4,
-            transition: 'border-color 0.2s',
-          }}
+          onFocusCapture={(e) => e.currentTarget.style.borderColor = theme.accent}
+          onBlurCapture={(e) => e.currentTarget.style.borderColor = theme.border}
         >
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              activeRoom
-                ? 'Ask anything... (Shift+Enter for new line)'
-                : 'Open a file to chat'
-            }
+            placeholder={activeRoom ? 'Ask anything… (Enter to send)' : 'Open a file first'}
             disabled={!activeRoom || isLoading}
             rows={1}
             style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: theme.text,
-              fontSize: 12.5,
-              fontFamily: "'IBM Plex Sans', sans-serif",
-              padding: '8px 10px',
-              resize: 'none',
-              maxHeight: 120,
-              overflowY: 'auto',
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: theme.text, fontSize: 13, lineHeight: 1.55,
+              resize: 'none', maxHeight: 120, overflowY: 'auto',
+              padding: '5px 0',
+              fontFamily: "'Inter', system-ui, sans-serif",
             }}
             onInput={(e) => {
               e.target.style.height = 'auto';
@@ -334,47 +285,31 @@ export function AIChatroom() {
             }}
           />
           <button
-            onClick={handleSendMessage}
+            onClick={handleSend}
             disabled={!input.trim() || !activeRoom || isLoading}
             style={{
-              background: input.trim() && !isLoading ? theme.accent : theme.border,
-              border: 'none',
-              borderRadius: 8,
-              width: 34,
-              height: 34,
-              cursor: input.trim() && !isLoading ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.2s',
-              opacity: input.trim() && !isLoading ? 1 : 0.4,
+              width: 32, height: 32, flexShrink: 0,
+              background: input.trim() && activeRoom && !isLoading ? theme.accent : theme.border,
+              border: 'none', borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: input.trim() && activeRoom && !isLoading ? 'pointer' : 'not-allowed',
+              opacity: input.trim() && activeRoom && !isLoading ? 1 : 0.4,
+              transition: 'all 0.15s',
               flexShrink: 0,
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M2 8h12M9 3l5 5-5 5"
-                stroke={theme.bg}
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1.5 7h11M7.5 2.5L12 7l-4.5 4.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         </div>
         {activeRoom && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 10,
-              color: theme.textDim,
-              textAlign: 'center',
-              fontFamily: "'IBM Plex Mono', monospace",
-            }}
-          >
-            Select code to analyze · Mode: {MODE_LABELS[activeMode]?.label}
+          <div style={{ marginTop: 6, fontSize: 10.5, color: theme.textMuted, textAlign: 'center' }}>
+            Select code in the editor · Shift+Enter for new line
           </div>
         )}
       </div>
+
     </div>
   );
 }
