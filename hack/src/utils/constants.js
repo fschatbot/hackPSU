@@ -165,7 +165,7 @@ export const AI_MODES = {
 export const MIN_PANEL_WIDTH = 200;
 export const MAX_PANEL_PERCENT = 40;
 export const DEFAULT_LEFT_PANEL_WIDTH = 260;
-export const DEFAULT_RIGHT_PANEL_WIDTH = 350;
+export const DEFAULT_RIGHT_PANEL_WIDTH = 500;
 
 export const FILE_ICONS_COLORS = {
   jsx: "#61dafb",

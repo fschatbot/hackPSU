@@ -72,10 +72,10 @@ export function MarkdownRenderer({ content }) {
         parts.push(<code key={`c${key}-${i++}`} style={inlineCode}>{m[1].slice(1, -1)}</code>);
       } else if (m[2]) {
         // bold
-        parts.push(<strong key={`b${key}-${i++}`} style={{ color: theme.textBright || theme.text }}>{m[3]}</strong>);
+        parts.push(<strong key={`b${key}-${i++}`} style={{ color: theme.textBright || theme.text }}>{renderInline(m[3], `b${key}-${i}`)}</strong>);
       } else if (m[4]) {
         // italic
-        parts.push(<em key={`i${key}-${i++}`}>{m[5]}</em>);
+        parts.push(<em key={`i${key}-${i++}`}>{renderInline(m[5], `i${key}-${i}`)}</em>);
       }
       last = m.index + m[0].length;
     }
