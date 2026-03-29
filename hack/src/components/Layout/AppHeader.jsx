@@ -64,15 +64,17 @@ export function AppHeader() {
       <div style={{ width: 1, height: 18, background: theme.border, flexShrink: 0 }} />
 
       {/* Mode tabs */}
-      <div style={{
-        display: 'flex',
-        gap: 4,
-        background: theme.panelAlt,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 10,
-        padding: 3,
-        flexShrink: 0,
-      }}>
+      <div
+        data-tutorial="mode-buttons"
+        style={{
+          display: 'flex',
+          gap: 4,
+          background: theme.panelAlt,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 10,
+          padding: 3,
+          flexShrink: 0,
+        }}>
         {MODES.map((m) => {
           const active = activeMode === m.id;
           const color = m.color || theme.accent;

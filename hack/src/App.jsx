@@ -7,6 +7,7 @@ import { AIProvider } from './contexts/AIContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { ResizableContainer } from './components/Layout/ResizableContainer';
 import { LoadProject } from './components/LoadProject/LoadProject';
+import { Tutorial, STORAGE_KEY as TUTORIAL_KEY } from './components/Tutorial/Tutorial';
 import { useEditor } from './contexts/EditorContext';
 import { useTheme } from './contexts/ThemeContext';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -16,6 +17,7 @@ function AppContent() {
   const { loadSession } = useSession();
   const { theme } = useTheme();
   const [showLoadProject, setShowLoadProject] = useState(true);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     // Try to restore previous session on mount
@@ -28,6 +30,10 @@ function AppContent() {
 
   const handleProjectLoaded = () => {
     setShowLoadProject(false);
+    // Show tutorial only if it has never been completed
+    if (!localStorage.getItem(TUTORIAL_KEY)) {
+      setShowTutorial(true);
+    }
   };
 
   if (showLoadProject && !files) {
@@ -183,6 +189,7 @@ function AppContent() {
         }
       `}</style>
       <ResizableContainer />
+      {showTutorial && <Tutorial onDone={() => setShowTutorial(false)} />}
     </>
   );
 }

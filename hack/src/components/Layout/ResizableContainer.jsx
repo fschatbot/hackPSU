@@ -109,6 +109,7 @@ export function ResizableContainer() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
       {/* Left Panel — File Explorer only */}
       <div
+        data-tutorial="file-explorer"
         style={{
           width: leftPanelWidth,
           display: 'flex',
@@ -131,6 +132,7 @@ export function ResizableContainer() {
 
       {/* Center Panel - Code Editor */}
       <div
+        data-tutorial="code-editor"
         style={{
           flex: 1,
           background: theme.panelAlt,
@@ -172,6 +174,7 @@ export function ResizableContainer() {
 
       {/* Right Panel - AI Chatroom */}
       <div
+        data-tutorial="ai-chat"
         style={{
           width: rightPanelWidth,
           background: theme.panel,
