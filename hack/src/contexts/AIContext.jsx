@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { streamGeminiResponse, generateSelectionPrompt, prepareContext } from '../services/aiService';
 
 const AIContext = createContext();
@@ -36,6 +36,9 @@ export function AIProvider({ children }) {
   const lastSelectionTime = useRef(0);
   const SELECTION_COOLDOWN = 2000;
 
+  // Track the last selection so mode switches can re-trigger analysis
+  const lastSelection = useRef(null);
+
   // Derived room key — every file+mode pair gets its own history
   const activeRoom = useMemo(
     () => (activeFile && activeMode ? `${activeFile}::${activeMode}` : null),
@@ -48,7 +51,7 @@ export function AIProvider({ children }) {
 
   const openChatRoom = useCallback((fileName) => {
     setActiveFile(fileName);
-    // Rooms are initialized lazily on first message — no greeting needed
+    lastSelection.current = null; // Clear stale selection from previous file
   }, []);
 
   /**
@@ -161,6 +164,9 @@ export function AIProvider({ children }) {
       if (now - lastSelectionTime.current < SELECTION_COOLDOWN) return;
       lastSelectionTime.current = now;
 
+      // Save the selection so mode switches can re-trigger
+      lastSelection.current = { text: selectedText, fileName, fileContent };
+
       if (activeMode === 'teachback') return;
 
       const autoPrompt = generateSelectionPrompt(selectedText, fileName, fileContent, activeMode);
@@ -185,6 +191,27 @@ export function AIProvider({ children }) {
     [activeFile, sendMessage]
   );
 
+  // Re-trigger analysis when the mode changes (if there's a selection and we're in auto mode)
+  const prevModeRef = useRef(activeMode);
+  useEffect(() => {
+    if (prevModeRef.current === activeMode) return;
+    prevModeRef.current = activeMode;
+
+    if (analysisMode !== 'auto') return;
+    if (activeMode === 'teachback') return;
+    if (!lastSelection.current) return;
+    if (isLoading) return;
+
+    const { text, fileName, fileContent } = lastSelection.current;
+    const roomKey = `${fileName}::${activeMode}`;
+    // Don't re-analyze if this room already has messages
+    if (chatRooms[roomKey] && chatRooms[roomKey].length > 0) return;
+
+    const autoPrompt = generateSelectionPrompt(text, fileName, fileContent, activeMode);
+    const context = prepareContext(fileName, fileContent, text);
+    sendMessage(autoPrompt, context);
+  }, [activeMode, analysisMode, isLoading, chatRooms, sendMessage]);
+
   const clearChatRoom = useCallback((fileName) => {
     setChatRooms((prev) => {
       const updated = { ...prev };
@@ -200,6 +227,59 @@ export function AIProvider({ children }) {
   const clearAllChatRooms = useCallback(() => {
     setChatRooms({});
     setActiveFile(null);
+  }, []);
+
+  // Welcome message — injected when a project is first loaded
+  const [welcomeMessage, setWelcomeMessage] = useState(null);
+  const hasWelcomedRef = useRef(false);
+
+  const welcomeProject = useCallback((fileTree) => {
+    if (!fileTree || hasWelcomedRef.current) return;
+    hasWelcomedRef.current = true;
+
+    // Gather file info for a smart greeting
+    const fileNames = [];
+    const walk = (tree) => {
+      Object.entries(tree).forEach(([name, node]) => {
+        if (node.type === 'file') fileNames.push(name);
+        else if (node.children) walk(node.children);
+      });
+    };
+    walk(fileTree);
+
+    const exts = {};
+    fileNames.forEach(f => {
+      const ext = f.split('.').pop()?.toLowerCase();
+      if (ext) exts[ext] = (exts[ext] || 0) + 1;
+    });
+
+    const topLangs = Object.entries(exts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([ext]) => ext);
+
+    const langLabel = {
+      js: 'JavaScript', jsx: 'React', ts: 'TypeScript', tsx: 'React/TS',
+      py: 'Python', java: 'Java', go: 'Go', rs: 'Rust', rb: 'Ruby',
+      css: 'CSS', html: 'HTML', json: 'JSON', md: 'Markdown',
+      cpp: 'C++', c: 'C', php: 'PHP', swift: 'Swift', kt: 'Kotlin',
+    };
+
+    const langs = topLangs.map(e => langLabel[e] || e.toUpperCase()).join(', ');
+    const count = fileNames.length;
+
+    setWelcomeMessage({
+      role: 'ai',
+      content: `Hey! I just loaded **${count} file${count !== 1 ? 's' : ''}** — looks like a ${langs} project.\n\nHere's how I can help:\n- **Select any code** in the editor and I'll explain it instantly\n- Switch modes up top: **Explain** · **Teach** · **Review** · **Quiz**\n- Use the experience slider to set your level\n\nOpen a file from the sidebar to get started — or ask me anything!`,
+      timestamp: new Date().toISOString(),
+      mode: 'explain',
+      isWelcome: true,
+    });
+  }, []);
+
+  const resetWelcome = useCallback(() => {
+    hasWelcomedRef.current = false;
+    setWelcomeMessage(null);
   }, []);
 
   const value = {
@@ -222,6 +302,9 @@ export function AIProvider({ children }) {
     triggerTeachBack,
     clearChatRoom,
     clearAllChatRooms,
+    welcomeMessage,
+    welcomeProject,
+    resetWelcome,
   };
 
   return <AIContext.Provider value={value}>{children}</AIContext.Provider>;

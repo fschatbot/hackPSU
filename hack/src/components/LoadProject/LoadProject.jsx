@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -45,7 +45,7 @@ const METHODS = [
 export function LoadProject({ onProjectLoaded }) {
   const { theme } = useTheme();
   const { loadFiles } = useEditor();
-  const { user, isAuthenticated: isLoggedIn } = useAuth();
+  const { user, isAuthenticated: isLoggedIn, listProjects, loadProject, deleteProject } = useAuth();
   const { isAuthenticated, authenticate, repositories, fetchRepositories, loadRepositoryAsProject, loadFromUrl } = useGitHub();
 
   const [loading, setLoading] = useState(false);
@@ -55,6 +55,40 @@ export function LoadProject({ onProjectLoaded }) {
   const [githubUrl, setGithubUrl] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [savedProjects, setSavedProjects] = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Fetch saved projects when logged in
+  useEffect(() => {
+    if (isLoggedIn) {
+      setLoadingProjects(true);
+      listProjects().then((projects) => {
+        setSavedProjects(projects);
+        setLoadingProjects(false);
+      });
+    } else {
+      setSavedProjects([]);
+    }
+  }, [isLoggedIn, listProjects]);
+
+  const handleLoadSavedProject = async (projectId) => {
+    setLoading(true); setError(null);
+    try {
+      const project = await loadProject(projectId);
+      if (project?.files) {
+        loadFiles(project.files);
+        onProjectLoaded?.();
+      } else {
+        setError('Could not load project.');
+      }
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    await deleteProject(projectId);
+    setSavedProjects((prev) => prev.filter((p) => p.id !== projectId));
+  };
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const zipInputRef = useRef(null);
@@ -479,57 +513,92 @@ export function LoadProject({ onProjectLoaded }) {
           </div>
         </section>
 
-        {/* Welcome back card for logged-in users */}
-        {isLoggedIn && (
-          <section style={{
-            maxWidth: 540, margin: '0 auto',
-            padding: '24px',
-            background: theme.panel,
-            border: `1px solid ${theme.accent}25`,
-            borderRadius: 14,
-            display: 'flex', alignItems: 'center', gap: 16,
-          }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: '50%',
-              background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent}80)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, fontWeight: 700, color: '#000', flexShrink: 0,
+        {/* Saved projects for logged-in users */}
+        {isLoggedIn && savedProjects.length > 0 && (
+          <section style={{ maxWidth: 640, margin: '0 auto', padding: '0 0 20px' }}>
+            <h3 style={{
+              fontSize: 16, fontWeight: 700, color: theme.textBright,
+              marginBottom: 12, letterSpacing: '-0.01em',
             }}>
-              {(user?.name || user?.email || '?')[0].toUpperCase()}
+              Your Projects
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {savedProjects.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '14px 16px',
+                    background: theme.panel,
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 12,
+                    transition: 'border-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${theme.accent}50`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    background: theme.accentDim,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, flexShrink: 0,
+                  }}>📁</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: theme.textBright, marginBottom: 2 }}>
+                      {p.name}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: theme.textDim }}>
+                      Last edited {new Date(p.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleLoadSavedProject(p.id)}
+                    disabled={loading}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8,
+                      background: theme.accentDim,
+                      border: `1px solid ${theme.accent}30`,
+                      color: theme.accent, fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', flexShrink: 0,
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = theme.accent; e.currentTarget.style.color = '#000'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = theme.accentDim; e.currentTarget.style.color = theme.accent; }}
+                  >
+                    Open
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProject(p.id)}
+                    style={{
+                      width: 28, height: 28,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'transparent',
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 6,
+                      color: theme.textDim, fontSize: 13,
+                      cursor: 'pointer', flexShrink: 0,
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = theme.danger; e.currentTarget.style.color = theme.danger; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.color = theme.textDim; }}
+                    title="Delete project"
+                  >×</button>
+                </div>
+              ))}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: theme.textBright, marginBottom: 3 }}>
-                Welcome back, {user?.name || user?.email?.split('@')[0]}
-              </div>
-              <div style={{ fontSize: 13, color: theme.textDim }}>
-                Pick up where you left off or start a new project
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                const session = localStorage.getItem('editor_session');
-                if (session) {
-                  try {
-                    const parsed = JSON.parse(session);
-                    if (parsed?.files) { loadFiles(parsed.files); onProjectLoaded?.(); return; }
-                  } catch {}
-                }
-                setError('No previous session found. Start a new project below.');
-              }}
-              style={{
-                padding: '10px 20px', borderRadius: 10,
-                background: theme.accentDim,
-                border: `1px solid ${theme.accent}30`,
-                color: theme.accent, fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = theme.accent; e.currentTarget.style.color = '#000'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = theme.accentDim; e.currentTarget.style.color = theme.accent; }}
-            >
-              Resume session
-            </button>
           </section>
+        )}
+
+        {isLoggedIn && loadingProjects && (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <span style={{
+              display: 'inline-block', width: 20, height: 20,
+              border: `2px solid ${theme.border}`,
+              borderTopColor: theme.accent,
+              borderRadius: '50%',
+              animation: 'spin 0.6s linear infinite',
+            }} />
+          </div>
         )}
 
         {/* Feature cards */}

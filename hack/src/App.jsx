@@ -3,8 +3,8 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { EditorProvider } from './contexts/EditorContext';
 import { SessionProvider, useSession } from './contexts/SessionContext';
 import { GitHubProvider } from './contexts/GitHubContext';
-import { AIProvider } from './contexts/AIContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AIProvider, useAI } from './contexts/AIContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ResizableContainer } from './components/Layout/ResizableContainer';
 import { LoadProject } from './components/LoadProject/LoadProject';
 import { Tutorial, STORAGE_KEY as TUTORIAL_KEY } from './components/Tutorial/Tutorial';
@@ -16,16 +16,44 @@ function AppContent() {
   const { files, loadFiles } = useEditor();
   const { loadSession } = useSession();
   const { theme } = useTheme();
+  const { welcomeProject, resetWelcome } = useAI();
+  const { isAuthenticated, saveProject } = useAuth();
   const [showTutorial, setShowTutorial] = useState(false);
+  const prevFilesRef = React.useRef(null);
+  const activeProjectIdRef = React.useRef(null);
 
   useEffect(() => {
     // Try to restore previous session on mount
     const session = loadSession();
     if (session?.files) {
       loadFiles(session.files);
-
     }
   }, [loadSession, loadFiles]);
+
+  // Trigger welcome when files go from null → loaded
+  useEffect(() => {
+    if (files && !prevFilesRef.current) {
+      welcomeProject(files);
+    } else if (!files && prevFilesRef.current) {
+      resetWelcome();
+      activeProjectIdRef.current = null;
+    }
+    prevFilesRef.current = files;
+  }, [files, welcomeProject, resetWelcome]);
+
+  // Auto-save to cloud when logged in (debounced)
+  useEffect(() => {
+    if (!isAuthenticated || !files) return;
+    const timer = setTimeout(() => {
+      // Derive a project name from top-level folder/file names
+      const topNames = Object.keys(files).slice(0, 3).join(', ');
+      const name = topNames || 'Untitled Project';
+      saveProject(name, files, activeProjectIdRef.current).then((id) => {
+        if (id) activeProjectIdRef.current = id;
+      });
+    }, 3000); // save 3s after last change
+    return () => clearTimeout(timer);
+  }, [files, isAuthenticated, saveProject]);
 
   const handleProjectLoaded = () => {
     // Show tutorial only if it has never been completed

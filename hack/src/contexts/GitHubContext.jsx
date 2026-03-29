@@ -108,7 +108,8 @@ export function GitHubProvider({ children }) {
 
   /**
    * Load a public GitHub repo from a URL (no auth required).
-   * Uses the git trees API — one request to get all paths, then fetches files in parallel.
+   * Uses the git trees API to get all paths, then fetches files via raw.githubusercontent.com.
+   * No file cap — loads everything that passes the filter.
    */
   const loadFromUrl = useCallback(async (repoUrl) => {
     // Parse owner/repo from URL like https://github.com/owner/repo or owner/repo
@@ -137,28 +138,37 @@ export function GitHubProvider({ children }) {
     if (!treeRes.ok) throw new Error('Failed to fetch file tree');
     const treeData = await treeRes.json();
 
-    const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.venv', 'venv', 'vendor', 'coverage', '.tox']);
-    const SKIP_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'pdf', 'zip', 'lock', 'map', 'min.js', 'min.css', 'pyc', 'class', 'o', 'so', 'dylib', 'exe', 'dll']);
-    const MAX_SIZE = 200000; // skip files over 200KB
+    const SKIP_DIRS = new Set([
+      'node_modules', '.git', 'dist', 'build', '.next', '__pycache__',
+      '.venv', 'venv', 'vendor', 'coverage', '.tox', '.cache',
+    ]);
+    const SKIP_EXT = new Set([
+      'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp', 'bmp',
+      'woff', 'woff2', 'ttf', 'eot',
+      'mp3', 'mp4', 'wav', 'ogg',
+      'pdf', 'zip', 'tar', 'gz',
+      'lock', 'map',
+      'min.js', 'min.css',
+      'pyc', 'class', 'o', 'so', 'dylib', 'exe', 'dll',
+    ]);
+    const MAX_SIZE = 300000;
 
     const textFiles = treeData.tree.filter(item => {
       if (item.type !== 'blob') return false;
       if (item.size > MAX_SIZE) return false;
       const parts = item.path.split('/');
-      if (parts.some(p => SKIP_DIRS.has(p) || p.startsWith('.'))) return false;
+      if (parts.some(p => SKIP_DIRS.has(p) || (p.startsWith('.') && p !== '.'))) return false;
       const ext = item.path.split('.').pop()?.toLowerCase();
       if (SKIP_EXT.has(ext)) return false;
       return true;
     });
 
-    // Fetch up to 150 files in batches of 30 to avoid rate limits
-    const MAX_FILES = 150;
-    const BATCH_SIZE = 30;
-    const filesToFetch = textFiles.slice(0, MAX_FILES);
+    // Fetch ALL files in batches of 50
+    const BATCH_SIZE = 50;
     const fileContents = [];
 
-    for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
-      const batch = filesToFetch.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < textFiles.length; i += BATCH_SIZE) {
+      const batch = textFiles.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(
         batch.map(async (item) => {
           try {
