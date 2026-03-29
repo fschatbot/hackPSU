@@ -252,7 +252,7 @@ export function EditableCodeEditor({ file }) {
             position: 'absolute',
             top: 8,
             right: 16,
-            zIndex: 10,
+            zIndex: 6,
             display: 'flex',
             gap: 8,
             alignItems: 'center',
