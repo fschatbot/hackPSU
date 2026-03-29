@@ -13,9 +13,9 @@ import { useTheme } from './contexts/ThemeContext';
 import 'highlight.js/styles/atom-one-dark.css';
 
 function AppContent() {
-  const { files, loadFiles } = useEditor();
+  const { files, loadFiles, openTabs, activeTab, openFile } = useEditor();
   const { loadSession } = useSession();
-  const { theme } = useTheme();
+  const { theme, themeName, setThemeName, fontSize, setFontSize } = useTheme();
   const { welcomeProject, resetWelcome } = useAI();
   const { isAuthenticated, saveProject } = useAuth();
   const [showTutorial, setShowTutorial] = useState(false);
@@ -45,15 +45,15 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || !files) return;
     const timer = setTimeout(() => {
-      // Derive a project name from top-level folder/file names
       const topNames = Object.keys(files).slice(0, 3).join(', ');
       const name = topNames || 'Untitled Project';
-      saveProject(name, files, activeProjectIdRef.current).then((id) => {
+      const metadata = { openTabs, activeTab, themeName, fontSize };
+      saveProject(name, files, activeProjectIdRef.current, metadata).then((id) => {
         if (id) activeProjectIdRef.current = id;
       });
-    }, 3000); // save 3s after last change
+    }, 3000);
     return () => clearTimeout(timer);
-  }, [files, isAuthenticated, saveProject]);
+  }, [files, openTabs, activeTab, isAuthenticated, saveProject, themeName, fontSize]);
 
   const handleProjectLoaded = () => {
     // Show tutorial only if it has never been completed

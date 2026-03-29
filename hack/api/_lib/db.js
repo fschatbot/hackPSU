@@ -20,6 +20,24 @@ const schemaReady = (async () => {
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS projects (
+      id          SERIAL PRIMARY KEY,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      files       TEXT NOT NULL DEFAULT '{}',
+      created_at  TIMESTAMPTZ DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)
+  `;
+  // Session metadata column (open tabs, active file, theme, etc.)
+  await sql`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS metadata TEXT DEFAULT '{}'
+  `;
 })().catch((err) => {
   console.error('Schema init failed:', err);
 });

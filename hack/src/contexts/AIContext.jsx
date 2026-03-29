@@ -193,6 +193,9 @@ export function AIProvider({ children }) {
 
   // Re-trigger analysis when the mode changes (if there's a selection and we're in auto mode)
   const prevModeRef = useRef(activeMode);
+  const chatRoomsRef = useRef(chatRooms);
+  chatRoomsRef.current = chatRooms;
+
   useEffect(() => {
     if (prevModeRef.current === activeMode) return;
     prevModeRef.current = activeMode;
@@ -200,17 +203,16 @@ export function AIProvider({ children }) {
     if (analysisMode !== 'auto') return;
     if (activeMode === 'teachback') return;
     if (!lastSelection.current) return;
-    if (isLoading) return;
 
     const { text, fileName, fileContent } = lastSelection.current;
     const roomKey = `${fileName}::${activeMode}`;
     // Don't re-analyze if this room already has messages
-    if (chatRooms[roomKey] && chatRooms[roomKey].length > 0) return;
+    if (chatRoomsRef.current[roomKey] && chatRoomsRef.current[roomKey].length > 0) return;
 
     const autoPrompt = generateSelectionPrompt(text, fileName, fileContent, activeMode);
     const context = prepareContext(fileName, fileContent, text);
     sendMessage(autoPrompt, context);
-  }, [activeMode, analysisMode, isLoading, chatRooms, sendMessage]);
+  }, [activeMode, analysisMode, sendMessage]);
 
   const clearChatRoom = useCallback((fileName) => {
     setChatRooms((prev) => {

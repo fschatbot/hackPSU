@@ -30,3 +30,4 @@ yarn-error.log*
 ._*
 **/.DS_Store
 **/._*
+.vercel

@@ -141,20 +141,23 @@ export function AuthProvider({ children }) {
     } catch { return []; }
   }, [getAuthHeaders]);
 
-  const saveProject = useCallback(async (name, files, projectId = null) => {
+  const saveProject = useCallback(async (name, files, projectId = null, metadata = null) => {
     const headers = getAuthHeaders();
     if (!headers) return null;
     try {
+      const body = { name, files };
+      if (metadata) body.metadata = metadata;
+
       if (projectId) {
         await fetch(`${API_URL}/projects/${projectId}`, {
           method: 'PUT', headers,
-          body: JSON.stringify({ name, files }),
+          body: JSON.stringify(body),
         });
         return projectId;
       } else {
         const res = await fetch(`${API_URL}/projects`, {
           method: 'POST', headers,
-          body: JSON.stringify({ name, files }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) return null;
         const data = await res.json();

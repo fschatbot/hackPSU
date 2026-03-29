@@ -43,8 +43,8 @@ const METHODS = [
 ];
 
 export function LoadProject({ onProjectLoaded }) {
-  const { theme } = useTheme();
-  const { loadFiles } = useEditor();
+  const { theme, setThemeName, setFontSize } = useTheme();
+  const { loadFiles, openFile } = useEditor();
   const { user, isAuthenticated: isLoggedIn, listProjects, loadProject, deleteProject } = useAuth();
   const { isAuthenticated, authenticate, repositories, fetchRepositories, loadRepositoryAsProject, loadFromUrl } = useGitHub();
 
@@ -58,18 +58,46 @@ export function LoadProject({ onProjectLoaded }) {
   const [savedProjects, setSavedProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
-  // Fetch saved projects when logged in
+  // Fetch saved projects when logged in — auto-open the most recent one
   useEffect(() => {
     if (isLoggedIn) {
       setLoadingProjects(true);
-      listProjects().then((projects) => {
+      listProjects().then(async (projects) => {
         setSavedProjects(projects);
         setLoadingProjects(false);
+        // Auto-load the most recent project right after login
+        if (projects.length > 0) {
+          const latest = projects[0]; // already sorted by updated_at DESC
+          try {
+            const project = await loadProject(latest.id);
+            if (project?.files) {
+              loadFiles(project.files);
+              restoreSession(project);
+              onProjectLoaded?.();
+            }
+          } catch (err) {
+            console.error('Auto-load failed:', err);
+          }
+        }
       });
     } else {
       setSavedProjects([]);
     }
   }, [isLoggedIn, listProjects]);
+
+  const restoreSession = (project) => {
+    if (!project?.metadata) return;
+    const { themeName, fontSize, openTabs, activeTab } = project.metadata;
+    if (themeName) setThemeName(themeName);
+    if (fontSize) setFontSize(fontSize);
+    // Re-open tabs after a tick so files are loaded first
+    if (openTabs?.length) {
+      setTimeout(() => {
+        openTabs.forEach((tab) => openFile(tab));
+        if (activeTab) openFile(activeTab);
+      }, 100);
+    }
+  };
 
   const handleLoadSavedProject = async (projectId) => {
     setLoading(true); setError(null);
@@ -77,6 +105,7 @@ export function LoadProject({ onProjectLoaded }) {
       const project = await loadProject(projectId);
       if (project?.files) {
         loadFiles(project.files);
+        restoreSession(project);
         onProjectLoaded?.();
       } else {
         setError('Could not load project.');
