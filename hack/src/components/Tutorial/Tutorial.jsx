@@ -104,7 +104,7 @@ export function Tutorial({ onDone }) {
     if (tooltipRef.current && tooltipRef.current.contains(e.target)) return;
     if (flashTimeout.current) clearTimeout(flashTimeout.current);
     setFlash(true);
-    flashTimeout.current = setTimeout(() => setFlash(false), 600);
+    flashTimeout.current = setTimeout(() => setFlash(false), 1000);
   }, []);
 
   useEffect(() => () => flashTimeout.current && clearTimeout(flashTimeout.current), []);
@@ -371,8 +371,8 @@ export function Tutorial({ onDone }) {
 
       <style>{`
         @keyframes tutorialFadeIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to   { opacity: 1; transform: scale(1); }
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
         @keyframes tutorialSlideIn {
           from { opacity: 0; transform: translateY(8px); }
