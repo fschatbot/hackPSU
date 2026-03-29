@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
 
   await schemaReady;
 
-  // GET /api/projects — list all projects for current user
+  // GET /api/projects — list all projects for current user (no files blob)
   if (req.method === 'GET') {
     const projects = await sql`
       SELECT id, name, description, created_at, updated_at
@@ -33,12 +33,19 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Name and files are required' });
     }
 
-    const filesJson = typeof files === 'string' ? files : JSON.stringify(files);
+    // files arrives as base64 gzip string — convert to Buffer for BYTEA
+    const filesBuf = Buffer.from(files, 'base64');
+
+    // 10MB compressed limit
+    if (filesBuf.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Project too large (max 10MB compressed)' });
+    }
+
     const metaJson = typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {});
 
     const [project] = await sql`
       INSERT INTO projects (user_id, name, description, files, metadata)
-      VALUES (${payload.userId}, ${name}, ${description || ''}, ${filesJson}, ${metaJson})
+      VALUES (${payload.userId}, ${name}, ${description || ''}, ${filesBuf}, ${metaJson})
       RETURNING id, name, description, created_at, updated_at
     `;
 

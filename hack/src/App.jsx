@@ -220,20 +220,43 @@ function AppContent() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  state = { error: null };
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 40, color: '#ff6b6b', fontFamily: 'monospace', background: '#1a1a2e', minHeight: '100vh' }}>
+          <h2>Something crashed</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', marginTop: 16, color: '#ccc' }}>{this.state.error.message}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, color: '#888', fontSize: 12 }}>{this.state.error.stack}</pre>
+          <button onClick={() => { localStorage.clear(); window.location.reload(); }}
+            style={{ marginTop: 20, padding: '10px 20px', background: '#ff6b6b', border: 'none', borderRadius: 8, color: '#000', cursor: 'pointer', fontWeight: 700 }}>
+            Clear storage &amp; reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <EditorProvider>
-          <GitHubProvider>
-            <AIProvider>
-              <SessionProvider>
-                <AppContent />
-              </SessionProvider>
-            </AIProvider>
-          </GitHubProvider>
-        </EditorProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <EditorProvider>
+            <GitHubProvider>
+              <AIProvider>
+                <SessionProvider>
+                  <AppContent />
+                </SessionProvider>
+              </AIProvider>
+            </GitHubProvider>
+          </EditorProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

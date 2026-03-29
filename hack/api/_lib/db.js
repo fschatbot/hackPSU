@@ -26,7 +26,7 @@ const schemaReady = (async () => {
       user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name        TEXT NOT NULL,
       description TEXT DEFAULT '',
-      files       TEXT NOT NULL DEFAULT '{}',
+      files       BYTEA NOT NULL DEFAULT E'\\x',
       created_at  TIMESTAMPTZ DEFAULT NOW(),
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     )

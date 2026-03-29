@@ -28,7 +28,11 @@ module.exports = async function handler(req, res) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    try { project.files = JSON.parse(project.files); } catch { project.files = {}; }
+    // BYTEA comes back as a Buffer — convert to base64 for the client
+    if (Buffer.isBuffer(project.files)) {
+      project.files = project.files.toString('base64');
+    }
+
     try { project.metadata = JSON.parse(project.metadata || '{}'); } catch { project.metadata = {}; }
 
     return res.json({ project });
@@ -36,7 +40,6 @@ module.exports = async function handler(req, res) {
 
   // PUT /api/projects/:id — update project
   if (req.method === 'PUT') {
-    // Verify ownership
     const [existing] = await sql`
       SELECT id FROM projects WHERE id = ${projectId} AND user_id = ${payload.userId}
     `;
@@ -44,19 +47,25 @@ module.exports = async function handler(req, res) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    const { name, description, files, metadata } = req.body ?? {};
+    const { name, files, metadata } = req.body ?? {};
 
     if (!name && !files && !metadata) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
 
-    const filesJson = files !== undefined ? (typeof files === 'string' ? files : JSON.stringify(files)) : null;
+    // Convert base64 string to Buffer for BYTEA
+    const filesBuf = files ? Buffer.from(files, 'base64') : null;
+
+    if (filesBuf && filesBuf.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Project too large (max 10MB compressed)' });
+    }
+
     const metaJson = metadata !== undefined ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null;
 
-    if (filesJson && metaJson) {
-      await sql`UPDATE projects SET name = COALESCE(${name}, name), files = ${filesJson}, metadata = ${metaJson}, updated_at = NOW() WHERE id = ${projectId}`;
-    } else if (filesJson) {
-      await sql`UPDATE projects SET name = COALESCE(${name}, name), files = ${filesJson}, updated_at = NOW() WHERE id = ${projectId}`;
+    if (filesBuf && metaJson) {
+      await sql`UPDATE projects SET name = COALESCE(${name}, name), files = ${filesBuf}, metadata = ${metaJson}, updated_at = NOW() WHERE id = ${projectId}`;
+    } else if (filesBuf) {
+      await sql`UPDATE projects SET name = COALESCE(${name}, name), files = ${filesBuf}, updated_at = NOW() WHERE id = ${projectId}`;
     } else if (metaJson) {
       await sql`UPDATE projects SET metadata = ${metaJson}, updated_at = NOW() WHERE id = ${projectId}`;
     } else if (name) {
@@ -66,7 +75,7 @@ module.exports = async function handler(req, res) {
     return res.json({ success: true });
   }
 
-  // DELETE /api/projects/:id — delete project
+  // DELETE /api/projects/:id
   if (req.method === 'DELETE') {
     const result = await sql`
       DELETE FROM projects WHERE id = ${projectId} AND user_id = ${payload.userId}

@@ -123,6 +123,31 @@ export function AuthProvider({ children }) {
     localStorage.setItem('code_editor_user', JSON.stringify(updatedUser));
   }, [user]);
 
+  // ── Compression helpers ──
+
+  const compressFiles = async (files) => {
+    const json = JSON.stringify(files);
+    const blob = new Blob([json]);
+    const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+    const buf = await new Response(stream).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 8192) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    }
+    return btoa(binary);
+  };
+
+  const decompressFiles = async (base64) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes]);
+    const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
+    const text = await new Response(stream).text();
+    return JSON.parse(text);
+  };
+
   // ── Cloud project sync ──
 
   const getAuthHeaders = useCallback(() => {
@@ -145,7 +170,8 @@ export function AuthProvider({ children }) {
     const headers = getAuthHeaders();
     if (!headers) return null;
     try {
-      const body = { name, files };
+      const compressed = await compressFiles(files);
+      const body = { name, files: compressed };
       if (metadata) body.metadata = metadata;
 
       if (projectId) {
@@ -173,7 +199,20 @@ export function AuthProvider({ children }) {
       const res = await fetch(`${API_URL}/projects/${projectId}`, { headers });
       if (!res.ok) return null;
       const data = await res.json();
-      return data.project || null;
+      const project = data.project;
+      if (!project) return null;
+
+      // Decompress files blob (or parse raw JSON for legacy projects)
+      if (typeof project.files === 'string') {
+        try {
+          project.files = await decompressFiles(project.files);
+        } catch {
+          // Fallback: might be raw JSON from before compression
+          try { project.files = JSON.parse(project.files); } catch { project.files = {}; }
+        }
+      }
+
+      return project;
     } catch { return null; }
   }, [getAuthHeaders]);
 
