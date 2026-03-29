@@ -2,7 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 const AuthContext = createContext();
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// In production (Vercel) API is same-origin at /api.
+// For local dev against the Express server set REACT_APP_API_URL=http://localhost:3001/api
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
