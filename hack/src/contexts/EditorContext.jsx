@@ -8,6 +8,10 @@ export function EditorProvider({ children }) {
   const [activeFile, setActiveFile] = useState(null);
   const [files, setFiles] = useState(null);
 
+  // Multi-file selection for cross-file analysis
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+
   const flattenFiles = useCallback((fileTree) => {
     const flat = {};
     const walk = (tree) => {
@@ -63,11 +67,35 @@ export function EditorProvider({ children }) {
     setActiveFile(null);
   }, []);
 
+  const toggleFileSelection = useCallback((fileName) => {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileName)) next.delete(fileName);
+      else next.add(fileName);
+      return next;
+    });
+  }, []);
+
+  const clearFileSelection = useCallback(() => {
+    setSelectedFiles(new Set());
+    setMultiSelectMode(false);
+  }, []);
+
+  const getSelectedFileContents = useCallback(() => {
+    if (!files || selectedFiles.size === 0) return [];
+    const flat = flattenFiles(files);
+    return Array.from(selectedFiles)
+      .filter((name) => flat[name])
+      .map((name) => ({ name, content: flat[name].content || '', lang: flat[name].lang }));
+  }, [files, selectedFiles, flattenFiles]);
+
   const resetProject = useCallback(() => {
     setFiles(null);
     setOpenTabs([]);
     setActiveTab(null);
     setActiveFile(null);
+    setSelectedFiles(new Set());
+    setMultiSelectMode(false);
     localStorage.removeItem('editor_session');
   }, []);
 
@@ -255,6 +283,12 @@ export function EditorProvider({ children }) {
     createFolder,
     deleteItem,
     renameItem,
+    selectedFiles,
+    multiSelectMode,
+    setMultiSelectMode,
+    toggleFileSelection,
+    clearFileSelection,
+    getSelectedFileContents,
   };
 
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;

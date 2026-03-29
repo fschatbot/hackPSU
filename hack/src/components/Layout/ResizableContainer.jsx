@@ -7,6 +7,7 @@ import { TabBar } from '../CodeEditor/TabBar';
 import { StatusBar } from '../CodeEditor/StatusBar';
 import { AIChatroom } from '../AIChatroom/AIChatroom';
 import { AppHeader } from './AppHeader';
+import { SearchPanel } from '../Search/SearchPanel';
 import { useEditor } from '../../contexts/EditorContext';
 import { DEFAULT_LEFT_PANEL_WIDTH, DEFAULT_RIGHT_PANEL_WIDTH, MIN_PANEL_WIDTH, MAX_PANEL_PERCENT } from '../../utils/constants';
 
@@ -27,6 +28,19 @@ export function ResizableContainer() {
 
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingRight, setIsResizingRight] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+
+  // Cmd+Shift+F to toggle search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Save to localStorage
   useEffect(() => {
@@ -107,7 +121,7 @@ export function ResizableContainer() {
     >
       <AppHeader />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-      {/* Left Panel — File Explorer only */}
+      {/* Left Panel — File Explorer + Search overlay */}
       <div
         data-tutorial="file-explorer"
         style={{
@@ -117,11 +131,13 @@ export function ResizableContainer() {
           borderRight: `1px solid ${theme.border}`,
           background: theme.panel,
           overflow: 'hidden',
+          position: 'relative',
         }}
       >
         <div style={{ flex: 1, overflow: 'auto', padding: '4px 6px' }}>
           <FileExplorer />
         </div>
+        {showSearch && <SearchPanel onClose={() => setShowSearch(false)} />}
       </div>
 
       {/* Left Resize Handle */}

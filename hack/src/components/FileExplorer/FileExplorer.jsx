@@ -130,7 +130,7 @@ function InlineInput({ initialValue = '', onCommit, onCancel, style }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FileExplorer() {
-  const { files, openFile, activeTab, createFile, createFolder, deleteItem, renameItem } = useEditor();
+  const { files, openFile, activeTab, createFile, createFolder, deleteItem, renameItem, selectedFiles, multiSelectMode, setMultiSelectMode, toggleFileSelection, clearFileSelection, getSelectedFileContents } = useEditor();
   const { theme, leftFontSize, setLeftFontSize } = useTheme();
 
   const [expanded, setExpanded] = useState({ src: true });

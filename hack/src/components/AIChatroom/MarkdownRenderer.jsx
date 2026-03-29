@@ -7,7 +7,7 @@ import hljs from 'highlight.js';
  * fenced code blocks with syntax highlighting + copy button, bullet/numbered lists,
  * blockquotes, horizontal rules, tables, and severity badges.
  */
-export function MarkdownRenderer({ content }) {
+export function MarkdownRenderer({ content, onFileClick }) {
   const { theme } = useTheme();
 
   const codeBlockOuter = {
@@ -81,6 +81,10 @@ export function MarkdownRenderer({ content }) {
     return blocks;
   }
 
+  // Detect if a string looks like a file path
+  const FILE_PATTERN = /^[\w./-]+\.\w{1,10}$/;
+  const isFileLike = (str) => FILE_PATTERN.test(str) && !str.startsWith('http');
+
   // Render inline markdown
   function renderInline(text, key) {
     const parts = [];
@@ -94,7 +98,20 @@ export function MarkdownRenderer({ content }) {
         parts.push(<span key={`t${key}-${i++}`}>{text.slice(last, m.index)}</span>);
       }
       if (m[1]) {
-        parts.push(<code key={`c${key}-${i++}`} style={inlineCode}>{m[1].slice(1, -1)}</code>);
+        const codeText = m[1].slice(1, -1);
+        // If it looks like a file path and we have an onFileClick handler, make it clickable
+        if (onFileClick && isFileLike(codeText)) {
+          parts.push(
+            <code
+              key={`c${key}-${i++}`}
+              style={{ ...inlineCode, cursor: 'pointer', borderBottom: `1px dashed ${theme.accent}60` }}
+              onClick={() => onFileClick(codeText)}
+              title={`Open ${codeText}`}
+            >{codeText}</code>
+          );
+        } else {
+          parts.push(<code key={`c${key}-${i++}`} style={inlineCode}>{codeText}</code>);
+        }
       } else if (m[2]) {
         parts.push(<strong key={`b${key}-${i++}`} style={{ color: theme.textBright }}>{renderInline(m[3], `b${key}-${i}`)}</strong>);
       } else if (m[4]) {

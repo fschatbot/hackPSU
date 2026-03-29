@@ -239,12 +239,18 @@ export function AIProvider({ children }) {
     if (!fileTree || hasWelcomedRef.current) return;
     hasWelcomedRef.current = true;
 
-    // Gather file info for a smart greeting
+    // Gather file info
     const fileNames = [];
-    const walk = (tree) => {
+    const fileSamples = {};
+    const walk = (tree, prefix = '') => {
       Object.entries(tree).forEach(([name, node]) => {
-        if (node.type === 'file') fileNames.push(name);
-        else if (node.children) walk(node.children);
+        if (node.type === 'file') {
+          fileNames.push(prefix + name);
+          // Grab first 200 chars of key files for AI context
+          if (node.content && Object.keys(fileSamples).length < 8) {
+            fileSamples[prefix + name] = node.content.substring(0, 200);
+          }
+        } else if (node.children) walk(node.children, prefix + name + '/');
       });
     };
     walk(fileTree);
@@ -270,14 +276,51 @@ export function AIProvider({ children }) {
     const langs = topLangs.map(e => langLabel[e] || e.toUpperCase()).join(', ');
     const count = fileNames.length;
 
+    // Show instant greeting, then stream the AI overview
     setWelcomeMessage({
       role: 'ai',
-      content: `Hey! I just loaded **${count} file${count !== 1 ? 's' : ''}** — looks like a ${langs} project.\n\nHere's how I can help:\n- **Select any code** in the editor and I'll explain it instantly\n- Switch modes up top: **Explain** · **Teach** · **Review** · **Quiz**\n- Use the experience slider to set your level\n\nOpen a file from the sidebar to get started — or ask me anything!`,
+      content: `Loaded **${count} file${count !== 1 ? 's' : ''}** — analyzing project structure...`,
       timestamp: new Date().toISOString(),
       mode: 'explain',
       isWelcome: true,
     });
-  }, []);
+
+    // Build a file tree string for the AI
+    const treeStr = fileNames.slice(0, 60).join('\n');
+    const samplesStr = Object.entries(fileSamples)
+      .map(([name, content]) => `--- ${name} ---\n${content}`)
+      .join('\n\n');
+
+    const overviewPrompt = `You are analyzing a project that was just loaded. Here's the file tree:\n\n${treeStr}\n\nFile previews:\n${samplesStr}\n\nGive a brief, friendly project overview:\n1. What this project is (1-2 sentences)\n2. Key files to explore (list 3-5 important ones with one-line descriptions)\n3. Architecture overview (how the pieces fit together, 2-3 sentences)\n\nEnd with a suggestion of where to start exploring. Keep it concise and conversational. Use markdown formatting.`;
+
+    // Stream the AI overview into the welcome message
+    streamGeminiResponse({
+      userMessage: overviewPrompt,
+      mode: 'explain',
+      experienceLevel,
+      onChunk: (chunk) => {
+        setWelcomeMessage((prev) => prev ? {
+          ...prev,
+          content: (prev.content.includes('analyzing project')
+            ? ''
+            : prev.content) + chunk,
+        } : prev);
+      },
+      onDone: () => {
+        setWelcomeMessage((prev) => prev ? { ...prev, streaming: false } : prev);
+      },
+      onError: () => {
+        // Fallback to static message if AI fails
+        setWelcomeMessage({
+          role: 'ai',
+          content: `Loaded **${count} file${count !== 1 ? 's' : ''}** — looks like a ${langs} project.\n\nHere's how I can help:\n- **Select any code** in the editor and I'll explain it instantly\n- Switch modes up top: **Explain** · **Teach** · **Review** · **Quiz**\n- Use the experience slider to set your level\n\nOpen a file from the sidebar to get started!`,
+          timestamp: new Date().toISOString(),
+          mode: 'explain',
+          isWelcome: true,
+        });
+      },
+    });
+  }, [experienceLevel]);
 
   const resetWelcome = useCallback(() => {
     hasWelcomedRef.current = false;

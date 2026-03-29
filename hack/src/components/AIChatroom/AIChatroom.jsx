@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
@@ -14,7 +14,7 @@ const MODE_INFO = {
 
 export function AIChatroom() {
   const { theme, chatFontSize, setChatFontSize } = useTheme();
-  const { activeTab, activeFile, files } = useEditor();
+  const { activeTab, activeFile, files, openFile: editorOpenFile, flattenFiles } = useEditor();
   const {
     activeRoom, activeFile: activeChatFile, getChatRoom, sendMessage, triggerTeachBack,
     isLoading, openChatRoom, activeMode, analysisMode, pendingSelection, clearPendingSelection,
@@ -24,6 +24,20 @@ export function AIChatroom() {
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // Handle clicking a file reference in AI output
+  const handleFileReference = useCallback((fileName) => {
+    if (!files) return;
+    const flat = flattenFiles(files);
+    if (flat[fileName]) {
+      editorOpenFile(fileName, flat[fileName]);
+    } else {
+      const match = Object.keys(flat).find(
+        (k) => k.endsWith(fileName) || k.endsWith('/' + fileName)
+      );
+      if (match) editorOpenFile(match, flat[match]);
+    }
+  }, [files, flattenFiles, editorOpenFile]);
 
   useEffect(() => {
     if (activeTab) openChatRoom(activeTab);
@@ -137,7 +151,7 @@ export function AIChatroom() {
               fontSize: 13, flexShrink: 0, marginTop: 1,
             }}>✦</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <MarkdownRenderer content={welcomeMessage.content} />
+              <MarkdownRenderer content={welcomeMessage.content} onFileClick={handleFileReference} />
             </div>
           </div>
         ) : messages.length === 0 && !activeChatFile ? (
@@ -187,7 +201,7 @@ export function AIChatroom() {
                   {/* Message content */}
                   <div style={{ padding: '2px 0' }}>
                     {isAI && !msg.isError
-                      ? <MarkdownRenderer content={msg.content} />
+                      ? <MarkdownRenderer content={msg.content} onFileClick={handleFileReference} />
                       : (
                         <div style={{
                           fontSize: 'inherit', lineHeight: 1.65,
@@ -208,10 +222,13 @@ export function AIChatroom() {
                     )}
                   </div>
 
-                  {/* Timestamp */}
+                  {/* Timestamp + actions */}
                   {msg.timestamp && !msg.streaming && (
-                    <div style={{ fontSize: 10, color: theme.textMuted, marginTop: 4, opacity: 0.6 }}>
+                    <div style={{ fontSize: 10, color: theme.textMuted, marginTop: 4, opacity: 0.6, display: 'flex', alignItems: 'center', gap: 8 }}>
                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {isAI && !msg.isError && msg.content.length > 20 && (
+                        <CopyButton content={msg.content} theme={theme} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -327,5 +344,29 @@ export function AIChatroom() {
       </div>
 
     </div>
+  );
+}
+
+function CopyButton({ content, theme }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      style={{
+        background: 'none', border: 'none', cursor: 'pointer',
+        color: copied ? (theme.success || '#5eead4') : theme.textMuted,
+        fontSize: 10, fontWeight: 600, padding: 0,
+        transition: 'color 0.15s',
+      }}
+      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = theme.accent; }}
+      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = copied ? (theme.success || '#5eead4') : theme.textMuted; }}
+    >
+      {copied ? '✓ Copied' : 'Copy as Markdown'}
+    </button>
   );
 }
