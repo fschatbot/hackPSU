@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useGitHub } from '../../contexts/GitHubContext';
 import { processUploadedFiles, extractZipFile } from '../../services/fileService';
 import { Settings } from '../Settings/Settings';
@@ -30,15 +31,34 @@ export function AppHeader() {
   const { theme } = useTheme();
   const { activeMode, setActiveMode, experienceLevel, setExperienceLevel } = useAI();
   const { loadFiles, resetProject } = useEditor();
+  const { isAuthenticated: isLoggedIn, listProjects, loadProject: loadCloudProject } = useAuth();
   const { loadFromUrl } = useGitHub();
   const [showSettings, setShowSettings] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [githubUrl, setGithubUrl] = useState('');
   const [loadError, setLoadError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [savedProjects, setSavedProjects] = useState([]);
   const fileRef = useRef(null);
   const folderRef = useRef(null);
   const zipRef = useRef(null);
+
+  // Fetch saved projects when dropdown opens
+  useEffect(() => {
+    if (showNewProject && isLoggedIn) {
+      listProjects().then(setSavedProjects);
+    }
+  }, [showNewProject, isLoggedIn, listProjects]);
+
+  const handleOpenSaved = async (id) => {
+    setIsLoading(true); setLoadError(null);
+    try {
+      const project = await loadCloudProject(id);
+      if (project?.files) { loadFiles(project.files); setShowNewProject(false); }
+      else setLoadError('Could not load project.');
+    } catch (err) { setLoadError(err.message); }
+    finally { setIsLoading(false); }
+  };
 
   const handleFiles = async (e) => {
     const files = e.target.files;
@@ -299,11 +319,57 @@ export function AppHeader() {
                     cursor: isLoading || !githubUrl.trim() ? 'not-allowed' : 'pointer',
                     opacity: isLoading || !githubUrl.trim() ? 0.4 : 1,
                     transition: 'opacity 0.15s',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    minWidth: 36, justifyContent: 'center',
                   }}
                 >
-                  {isLoading ? '...' : 'Go'}
+                  {isLoading ? (
+                    <span style={{
+                      width: 14, height: 14,
+                      border: `2px solid rgba(0,0,0,0.2)`,
+                      borderTopColor: '#000',
+                      borderRadius: '50%',
+                      animation: 'spin 0.6s linear infinite',
+                    }} />
+                  ) : 'Go'}
                 </button>
               </div>
+
+              {/* Saved projects */}
+              {isLoggedIn && savedProjects.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: theme.border, margin: '8px 0' }} />
+                  <div style={{ fontSize: 12, fontWeight: 600, color: theme.textDim, marginBottom: 6 }}>
+                    Your Projects
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 160, overflowY: 'auto' }}>
+                    {savedProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleOpenSaved(p.id)}
+                        disabled={isLoading}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '8px 10px',
+                          background: 'transparent',
+                          border: 'none', borderRadius: 8,
+                          color: theme.text, fontSize: 12.5, fontWeight: 500,
+                          cursor: 'pointer', textAlign: 'left',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = theme.panelHover || theme.panelAlt; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <span style={{ fontSize: 14, lineHeight: 1 }}>📁</span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        <span style={{ fontSize: 10, color: theme.textMuted, flexShrink: 0 }}>
+                          {new Date(p.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {/* Hidden inputs */}
               <input ref={folderRef} type="file" webkitdirectory="" directory="" multiple onChange={handleFiles} style={{ display: 'none' }} />

@@ -18,6 +18,7 @@ export function AIChatroom() {
   const {
     activeRoom, activeFile: activeChatFile, getChatRoom, sendMessage, triggerTeachBack,
     isLoading, openChatRoom, activeMode, analysisMode, pendingSelection, clearPendingSelection,
+    welcomeMessage,
   } = useAI();
 
   const [input, setInput] = useState('');
@@ -124,7 +125,22 @@ export function AIChatroom() {
       {/* Messages */}
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 16, fontSize: chatFontSize }}>
 
-        {messages.length === 0 && !activeChatFile ? (
+        {/* Welcome message when no file is open */}
+        {messages.length === 0 && !activeChatFile && welcomeMessage ? (
+          <div style={{ display: 'flex', gap: 10, animation: 'fadeUp 0.3s ease' }}>
+            <div style={{
+              width: 28, height: 28, minWidth: 28,
+              borderRadius: 8,
+              background: theme.accentDim,
+              border: `1px solid ${theme.accent}50`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, flexShrink: 0, marginTop: 1,
+            }}>✦</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <MarkdownRenderer content={welcomeMessage.content} />
+            </div>
+          </div>
+        ) : messages.length === 0 && !activeChatFile ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             height: '100%', gap: 12, textAlign: 'center', padding: 24,

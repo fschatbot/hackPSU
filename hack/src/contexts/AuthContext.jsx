@@ -123,6 +123,66 @@ export function AuthProvider({ children }) {
     localStorage.setItem('code_editor_user', JSON.stringify(updatedUser));
   }, [user]);
 
+  // ── Cloud project sync ──
+
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem('code_editor_token');
+    return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : null;
+  }, []);
+
+  const listProjects = useCallback(async () => {
+    const headers = getAuthHeaders();
+    if (!headers) return [];
+    try {
+      const res = await fetch(`${API_URL}/projects`, { headers });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.projects || [];
+    } catch { return []; }
+  }, [getAuthHeaders]);
+
+  const saveProject = useCallback(async (name, files, projectId = null) => {
+    const headers = getAuthHeaders();
+    if (!headers) return null;
+    try {
+      if (projectId) {
+        await fetch(`${API_URL}/projects/${projectId}`, {
+          method: 'PUT', headers,
+          body: JSON.stringify({ name, files }),
+        });
+        return projectId;
+      } else {
+        const res = await fetch(`${API_URL}/projects`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ name, files }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.project?.id || null;
+      }
+    } catch { return null; }
+  }, [getAuthHeaders]);
+
+  const loadProject = useCallback(async (projectId) => {
+    const headers = getAuthHeaders();
+    if (!headers) return null;
+    try {
+      const res = await fetch(`${API_URL}/projects/${projectId}`, { headers });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.project || null;
+    } catch { return null; }
+  }, [getAuthHeaders]);
+
+  const deleteProject = useCallback(async (projectId) => {
+    const headers = getAuthHeaders();
+    if (!headers) return false;
+    try {
+      const res = await fetch(`${API_URL}/projects/${projectId}`, { method: 'DELETE', headers });
+      return res.ok;
+    } catch { return false; }
+  }, [getAuthHeaders]);
+
   const value = {
     user,
     isAuthenticated,
@@ -131,6 +191,10 @@ export function AuthProvider({ children }) {
     register,
     logout,
     updateProfile,
+    listProjects,
+    saveProject,
+    loadProject,
+    deleteProject,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
