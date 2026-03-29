@@ -16,7 +16,6 @@ function AppContent() {
   const { files, loadFiles } = useEditor();
   const { loadSession } = useSession();
   const { theme } = useTheme();
-  const [showLoadProject, setShowLoadProject] = useState(true);
   const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
@@ -24,12 +23,11 @@ function AppContent() {
     const session = loadSession();
     if (session?.files) {
       loadFiles(session.files);
-      setShowLoadProject(false);
+
     }
   }, [loadSession, loadFiles]);
 
   const handleProjectLoaded = () => {
-    setShowLoadProject(false);
     // Show tutorial only if it has never been completed
     if (!localStorage.getItem(TUTORIAL_KEY)) {
       setShowTutorial(true);
