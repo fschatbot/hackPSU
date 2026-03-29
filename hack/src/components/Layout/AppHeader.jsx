@@ -3,6 +3,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useAI } from '../../contexts/AIContext';
 import { useEditor } from '../../contexts/EditorContext';
 import { Settings } from '../Settings/Settings';
+import { CodeLensLogo } from '../Icons/CodeLensLogo';
 
 const MODES = [
   { id: 'explain',  label: 'Explain', color: null },
@@ -47,19 +48,12 @@ export function AppHeader() {
       <button
         onClick={resetProject}
         style={{
-          display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
           background: 'none', border: 'none', cursor: 'pointer', padding: 0,
         }}
         title="Back to home"
       >
-        <span style={{
-          fontFamily: "'Geist Mono', monospace",
-          fontSize: 13, fontWeight: 600,
-          color: theme.accent,
-          letterSpacing: '-0.02em',
-        }}>
-          &lt;/&gt;
-        </span>
+        <CodeLensLogo size={36} color={theme.accent} />
         <span style={{
           fontSize: 13, fontWeight: 700,
           color: theme.textBright,
